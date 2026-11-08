@@ -11564,3 +11564,249 @@ body:not(.classic-sidebar):not(.mini) .sidebar.rail-collapsed .sidebar-nav { gap
 /* Mini player: the mark alone, no "Moodex" wordmark crowding the controls. */
 body.mini .titlebar-wordmark,
 body.mini .titlebar-drag .logo-text { display: none !important; }
+
+/* ===========================================================================
+   v1.1.4
+   =========================================================================== */
+/* Playlists drawer lives inside the sidebar and opens past its right edge;
+   clipping the sidebar for the rounded panel hid it completely. */
+body:not(.classic-sidebar):not(.mini) .app-layout > .sidebar { overflow: visible !important; }
+
+/* Presets are reached from the player bar; the sidebar no longer lists them. */
+#btn-toggle-presets-drawer { display: none !important; }
+
+/* Mini player: the centred logo sat on top of the lyrics button in a 420px
+   window. Anchor it at the left of the title bar instead. */
+body.mini .titlebar .app-logo {
+  position: static !important;
+  left: auto !important;
+  top: auto !important;
+  transform: none !important;
+  margin: 0 0 0 4px !important;
+}
+body.mini .titlebar-moodex-icon { width: 18px !important; height: 18px !important; }
+
+/* ---------------------------------------------------------------------------
+   About - "Liner notes"
+   Moodex as a record: a vinyl half out of its sleeve (spinning only while
+   music plays, label showing the current cover), the About actions as a
+   numbered tracklist, and the listener's own stats as the credits.
+   --------------------------------------------------------------------------- */
+.mx-liner {
+  display: grid;
+  grid-template-columns: minmax(260px, 380px) 1fr;
+  gap: 36px;
+  align-items: start;
+  padding: 8px 0 12px;
+}
+@media (max-width: 900px) { .mx-liner { grid-template-columns: 1fr; } }
+
+.mx-record-stage {
+  position: relative;
+  aspect-ratio: 10 / 6.4;
+  width: 100%;
+  max-width: 380px;
+}
+.mx-sleeve {
+  position: absolute;
+  inset: 0 36% 0 0;
+  border-radius: 14px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: #0b1530;
+  box-shadow: 0 20px 40px -18px rgba(0, 0, 0, 0.8), inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+  z-index: 2;
+}
+.mx-sleeve-art {
+  position: relative;
+  flex: 1;
+  background:
+    radial-gradient(120% 90% at 20% 10%, rgba(95, 208, 255, 0.55), transparent 55%),
+    radial-gradient(90% 80% at 90% 100%, rgba(26, 92, 240, 0.9), transparent 60%),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.05) 0 1px, transparent 1px 14px),
+    linear-gradient(160deg, #0e2a6b, #071027);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.mx-sleeve-mark,
+.mx-vinyl-mark {
+  display: block;
+  background: #fff;
+  -webkit-mask: url('../../assets/moodex.svg') no-repeat center / contain;
+  mask: url('../../assets/moodex.svg') no-repeat center / contain;
+}
+.mx-sleeve-mark { width: 62%; aspect-ratio: 1; filter: drop-shadow(0 0 18px rgba(95, 208, 255, 0.6)); }
+.mx-sleeve-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 14px 14px;
+  background: rgba(0, 0, 0, 0.35);
+}
+.mx-sleeve-kicker { font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: #5FD0FF; font-weight: 700; }
+.mx-sleeve-title { font-size: 22px; font-weight: 750; color: #fff; letter-spacing: 0.3px; }
+.mx-sleeve-sub { font-size: 12px; color: rgba(255, 255, 255, 0.6); }
+
+.mx-vinyl {
+  position: absolute;
+  top: 4.7%;
+  right: 0;
+  width: 58%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background:
+    repeating-radial-gradient(circle, #111 0 1.2px, #1b1b1f 1.6px 2.6px),
+    #111;
+  box-shadow: 0 14px 30px -12px rgba(0, 0, 0, 0.9);
+  z-index: 1;
+  transition: transform 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.mx-record-stage:hover .mx-vinyl { transform: translateX(6%) rotate(8deg); }
+.mx-vinyl-grooves {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: conic-gradient(from 30deg, transparent 0 10%, rgba(255, 255, 255, 0.12) 14%, transparent 20% 55%, rgba(255, 255, 255, 0.08) 60%, transparent 66%);
+  pointer-events: none;
+}
+.mx-vinyl-label {
+  position: relative;
+  width: 36%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  overflow: hidden;
+  background: linear-gradient(135deg, #5FD0FF, #1A5CF0);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: mxSpin 3.2s linear infinite;
+  animation-play-state: paused;
+}
+body.is-playing .mx-vinyl-label { animation-play-state: running; }
+.mx-vinyl-label::after {
+  content: '';
+  position: absolute;
+  width: 10%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: #0a0a0a;
+}
+.mx-vinyl-art { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity 0.4s ease; }
+.mx-vinyl-art.has-art { opacity: 1; }
+.mx-vinyl-mark { width: 62%; aspect-ratio: 1; }
+.mx-vinyl-art.has-art + .mx-vinyl-mark { display: none; }
+@keyframes mxSpin { to { transform: rotate(360deg); } }
+
+.mx-liner-body { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+.mx-cat {
+  font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  font-size: 11px;
+  letter-spacing: 1.5px;
+  color: #5FD0FF;
+  text-transform: uppercase;
+}
+.mx-liner-title { display: block; font-size: 28px; font-weight: 750; margin: 4px 0 6px; color: var(--md-sys-color-on-surface); }
+.mx-liner-blurb { margin: 0; font-size: 13px; line-height: 1.55; color: rgba(255, 255, 255, 0.7); max-width: 56ch; }
+
+.mx-tracklist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; border-top: 1px solid rgba(255, 255, 255, 0.08); }
+.mx-tracklist > li { border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
+.mx-track {
+  all: unset;
+  box-sizing: border-box;
+  display: grid !important;
+  grid-template-columns: 34px 1fr auto;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 11px 10px;
+  border-radius: 10px;
+  cursor: pointer;
+  color: var(--md-sys-color-on-surface);
+  text-decoration: none;
+  transition: background-color 0.15s ease;
+}
+.mx-track-static { cursor: default; }
+.mx-track:not(.mx-track-static):hover,
+.mx-track:focus-visible { background: rgba(46, 155, 255, 0.1); outline: none; }
+.mx-tn {
+  position: relative;
+  font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.45);
+  text-align: center;
+}
+.mx-track:not(.mx-track-static):hover .mx-tn { color: transparent; }
+.mx-track:not(.mx-track-static):hover .mx-tn::after {
+  content: '\25B6';
+  position: absolute;
+  inset: 0;
+  color: #5FD0FF;
+  font-size: 12px;
+}
+.mx-tt { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.mx-tt b { font-size: 14px; font-weight: 600; }
+.mx-tt small { font-size: 12px; color: rgba(255, 255, 255, 0.5); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mx-td { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-size: 12px; color: rgba(255, 255, 255, 0.45); }
+.mx-track-action { padding: 6px 14px !important; font-size: 12px !important; }
+
+.mx-pressing {
+  border-radius: 14px;
+  padding: 14px 16px;
+  background: linear-gradient(135deg, rgba(46, 155, 255, 0.12), rgba(26, 92, 240, 0.05));
+  border: 1px solid rgba(95, 208, 255, 0.18);
+}
+.mx-pressing-title { font-size: 11px; letter-spacing: 2px; text-transform: uppercase; color: #5FD0FF; font-weight: 700; }
+.mx-pressing-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 12px; margin: 10px 0 0; }
+.mx-pressing-grid div { min-width: 0; }
+.mx-pressing-grid dt { font-size: 11px; color: rgba(255, 255, 255, 0.5); }
+.mx-pressing-grid dd { margin: 2px 0 0; font-size: 18px; font-weight: 700; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.mx-barcode-row { display: flex; align-items: center; gap: 12px; opacity: 0.55; }
+.mx-barcode {
+  width: 92px;
+  height: 26px;
+  background: repeating-linear-gradient(90deg, #fff 0 2px, transparent 2px 3px, #fff 3px 4px, transparent 4px 7px, #fff 7px 10px, transparent 10px 11px);
+}
+.mx-barcode-text { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-size: 10px; letter-spacing: 1.5px; }
+
+/* Progress style picker */
+.progress-style-item { display: flex; flex-direction: column; gap: 12px; }
+.progress-style-picker { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.progress-style-opt {
+  all: unset;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 8px 10px;
+  border-radius: 14px;
+  cursor: pointer;
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 5%, transparent);
+  border: 1px solid transparent;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+.progress-style-opt:hover { background: color-mix(in srgb, var(--md-sys-color-on-surface) 9%, transparent); }
+.progress-style-opt.active { border-color: #2E9BFF; background: rgba(46, 155, 255, 0.12); }
+.progress-style-opt span { font-size: 12px; font-weight: 600; color: var(--md-sys-color-on-surface); }
+.progress-style-opt:focus-visible { outline: 2px solid #5FD0FF; outline-offset: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .mx-vinyl-label { animation: none; }
+  .mx-vinyl { transition: none; }
+}
+
+/* Narrow settings pane: record on top, notes below, so nothing collides. */
+#settings-section-about { container-type: inline-size; }
+@container (max-width: 860px) {
+  .mx-liner { grid-template-columns: 1fr; gap: 24px; }
+  .mx-record-stage { max-width: 360px; }
+}
+.mx-tt b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.setting-item[hidden] { display: none !important; }

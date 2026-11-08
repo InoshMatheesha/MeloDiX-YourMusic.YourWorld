@@ -1217,7 +1217,21 @@
               </div>
             </div>
 
-            <div class="setting-item">
+            <div class="setting-item progress-style-item">
+              <div style="display: flex; flex-direction: column; gap: 2px;">
+                <span class="setting-name">Progress bar style</span>
+                <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">How the playbar shows where you are in a track</span>
+              </div>
+              <div class="progress-style-picker" id="progress-style-picker" role="radiogroup" aria-label="Progress bar style">
+                <button type="button" class="progress-style-opt" data-style="wave" role="radio"><canvas width="132" height="24"></canvas><span>Wave</span></button>
+                <button type="button" class="progress-style-opt" data-style="line" role="radio"><canvas width="132" height="24"></canvas><span>Line</span></button>
+                <button type="button" class="progress-style-opt" data-style="neon" role="radio"><canvas width="132" height="24"></canvas><span>Neon</span></button>
+                <button type="button" class="progress-style-opt" data-style="dots" role="radio"><canvas width="132" height="24"></canvas><span>Dots</span></button>
+                <button type="button" class="progress-style-opt" data-style="pulse" role="radio"><canvas width="132" height="24"></canvas><span>Pulse</span></button>
+              </div>
+            </div>
+
+            <div class="setting-item" hidden>
               <div class="setting-item-top" style="align-items: center;">
                 <span class="setting-name">Wavy progress bar</span>
                 <button class="effect-switch-btn active" id="btn-wavy-progress"><span class="thumb"></span></button>
@@ -2230,55 +2244,67 @@
 
           <div class="settings-section" id="settings-section-about" data-cat="about">
             <span class="settings-section-title">About</span>
-            <div class="moodex-hero-banner-wrap">
-              <div class="moodex-hero-banner">
-                <div class="moodex-hero-floats">
-                  <span class="moodex-float-logo f1"></span>
-                  <span class="moodex-float-logo f2"></span>
-                  <span class="moodex-float-logo f3"></span>
+            <div class="mx-liner" id="mx-liner">
+              <div class="mx-record-stage" aria-hidden="true">
+                <div class="mx-vinyl">
+                  <div class="mx-vinyl-grooves"></div>
+                  <div class="mx-vinyl-label"><img class="mx-vinyl-art" id="mx-vinyl-art" alt="" decoding="async"><span class="mx-vinyl-mark"></span></div>
                 </div>
-                <div class="moodex-hero-cookie">
-                  <span class="moodex-hero-logo-main"></span>
-                </div>
-              </div>
-              <span class="moodex-hero-title">Moodex</span>
-            </div>
-            <div class="m3-group">
-            <div class="setting-item">
-              <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
-                <div style="display: flex; align-items: center; gap: 12px;">
-                  <div style="width: 32px; height: 32px; border-radius: 50%; overflow: hidden; display: flex; align-items: center; justify-content: center;">
-                    <img src="../../assets/icon.png" alt="Moodex" style="width: 32px; height: 32px; object-fit: cover;">
-                  </div>
-                  <div style="display: flex; flex-direction: column;">
-                    <span class="setting-name">Moodex</span>
-                    <span id="about-version" style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Version 1.1.0</span>
+                <div class="mx-sleeve">
+                  <div class="mx-sleeve-art"><span class="mx-sleeve-mark"></span></div>
+                  <div class="mx-sleeve-meta">
+                    <span class="mx-sleeve-kicker">Moodex Records</span>
+                    <span class="mx-sleeve-title">Moodex</span>
+                    <span class="mx-sleeve-sub" id="about-version">Version 1.1.4</span>
                   </div>
                 </div>
-                <button class="btn-pill-primary" id="btn-check-updates" style="padding: 6px 14px; font-size: calc(12px * var(--font-scale, 1));">Check for updates</button>
               </div>
-            </div>
 
-            <div class="setting-item">
-              <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
-                <span class="setting-name">Keyboard shortcuts</span>
-                <button class="btn-outline-pill" id="btn-open-shortcuts" style="padding: 6px 14px; font-size: calc(12px * var(--font-scale, 1));">Keyboard shortcuts</button>
-              </div>
-            </div>
+              <div class="mx-liner-body">
+                <div class="mx-liner-head">
+                  <span class="mx-cat" id="mx-catalog">MDX-114 &middot; Side A</span>
+                  <span class="mx-liner-title">Liner notes</span>
+                  <p class="mx-liner-blurb">An open-source, ad-free player for YouTube Music, YouTube, SoundCloud and your own files. No account, no tracking &mdash; everything stays on this computer.</p>
+                </div>
 
-            <div class="setting-item">
-              <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
-                <span class="setting-name">Diagnostics</span>
-                <button class="btn-outline-pill" id="btn-copy-diagnostics" style="padding: 6px 14px; font-size: calc(12px * var(--font-scale, 1));">Copy diagnostics</button>
-              </div>
-            </div>
+                <ol class="mx-tracklist">
+                  <li class="mx-track mx-track-static">
+                    <span class="mx-tn">01</span>
+                    <span class="mx-tt"><b>Updates</b><small>Get the newest pressing</small></span>
+                    <button class="btn-pill-primary mx-track-action" id="btn-check-updates">Check for updates</button>
+                  </li>
+                  <li><button type="button" class="mx-track" id="btn-open-shortcuts">
+                    <span class="mx-tn">02</span>
+                    <span class="mx-tt"><b>Keyboard shortcuts</b><small>Play it without the mouse</small></span>
+                    <span class="mx-td">Keys</span>
+                  </button></li>
+                  <li><button type="button" class="mx-track" id="btn-copy-diagnostics">
+                    <span class="mx-tn">03</span>
+                    <span class="mx-tt"><b>Copy diagnostics</b><small>Paste into a bug report</small></span>
+                    <span class="mx-td">Copy</span>
+                  </button></li>
+                  <li><button type="button" class="mx-track" id="btn-open-logs">
+                    <span class="mx-tn">04</span>
+                    <span class="mx-tt"><b>Open logs folder</b><small>What happened behind the scenes</small></span>
+                    <span class="mx-td">Open</span>
+                  </button></li>
+                  <li><a class="mx-track" href="https://t.me/moodexplayer" target="_blank" rel="noopener">
+                    <span class="mx-tn">05</span>
+                    <span class="mx-tt"><b>Say hi</b><small>Moodex on Telegram</small></span>
+                    <span class="mx-td">t.me</span>
+                  </a></li>
+                </ol>
 
-            <div class="setting-item">
-              <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
-                <span class="setting-name">Logs</span>
-                <button class="btn-outline-pill" id="btn-open-logs" style="padding: 6px 14px; font-size: calc(12px * var(--font-scale, 1));">Open logs folder</button>
+                <div class="mx-pressing">
+                  <span class="mx-pressing-title">Your pressing</span>
+                  <dl class="mx-pressing-grid" id="mx-pressing-grid"></dl>
+                </div>
+
+                <div class="mx-barcode-row" aria-hidden="true">
+                  <span class="mx-barcode"></span>
+                  <span class="mx-barcode-text" id="mx-barcode-text">MDX 1.1.4 &middot; MADE BY ROOTLESS</span>
+                </div>
               </div>
-            </div>
             </div>
           </div>
 
@@ -2289,7 +2315,7 @@
               </svg>
               Moodex made by rootless, support me: <a href="https://t.me/moodexplayer" target="_blank" rel="noopener">t.me/moodexplayer</a>
             </span>
-            <span class="settings-version-tag">v1.1.0</span>
+            <span class="settings-version-tag">v1.1.4</span>
           </div>
             </div>
           </div>

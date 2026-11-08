@@ -51,6 +51,22 @@ Moodex is an open-source, telemetry-free desktop music app and player for **Wind
 
 Built with **Electron**, **Vanilla JavaScript**, and **WebGL**, Moodex provides responsive UI interactions and hardware-accelerated audio visualization without runtime framework overhead. The project is distributed under the **MIT license** and enforces strict privacy: all configuration, cached streams, and playback history remain strictly on the local machine.
 
+## What's new in v1.1.4
+
+- **New About page - "Liner notes".** Moodex is presented as a record: a vinyl
+  half out of its sleeve that spins only while music is playing, with the
+  current song's cover on its centre label. The About actions (updates,
+  shortcuts, diagnostics, logs, Telegram) are a numbered tracklist, and
+  "Your pressing" shows your own stats - plays, listening time, liked songs,
+  artists and the date of your first play.
+- **Progress bar styles.** Settings -> Tracks -> *Progress bar style* offers
+  five thin styles - Wave, Line, Neon, Dots and Pulse - each with a live
+  preview. All are about 3px instead of the old 9.5px bar.
+- **Playlists button works again.** The drawer was being clipped by the
+  rounded sidebar panel introduced in 1.1.2.
+- **Presets removed from the sidebar** (still in the player bar).
+- **Mini player:** the logo no longer sits on top of the lyrics button.
+
 ## What's new in v1.1.3
 
 - **Moodex loading animation.** Loading screens now show the Moodex mark

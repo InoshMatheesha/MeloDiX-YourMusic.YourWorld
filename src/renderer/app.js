@@ -1209,6 +1209,96 @@ document.addEventListener('DOMContentLoaded', async () => {
   let cachedPrimaryColor = '';
   let cachedDimColor = '';
   let animationFrameId = null;
+  // --- Progress bar styles --------------------------------------------------
+  // Thin (about 3px) alternatives to the old 9.5px bar, picked in Settings.
+  const PROGRESS_STYLES = ['wave', 'line', 'neon', 'dots', 'pulse'];
+  state.progressStyle = (() => {
+    try { const v = localStorage.getItem('moodex_progress_style'); return PROGRESS_STYLES.includes(v) ? v : 'wave'; } catch (_) { return 'wave'; }
+  })();
+
+  function drawProgressStyle(ctx, o) {
+    const { left, right, x, cy, primary, dim, railAlpha, drag, noKnob } = o;
+    const style = o.style;
+    const knobR = 4.5 + 2 * (drag || 0);
+    const gap = noKnob ? 0 : knobR + 3;
+    const playedEnd = Math.max(left, x - gap);
+    const railStart = Math.min(right, x + gap);
+
+    const rail = (w) => {
+      if (railStart >= right - 1) return;
+      ctx.save();
+      ctx.globalAlpha = railAlpha;
+      ctx.beginPath(); ctx.lineWidth = w; ctx.lineCap = 'round'; ctx.strokeStyle = dim;
+      ctx.moveTo(railStart, cy); ctx.lineTo(right, cy); ctx.stroke();
+      ctx.restore();
+    };
+    const dotKnob = (glow) => {
+      if (noKnob) return;
+      ctx.save();
+      if (glow) { ctx.shadowColor = primary; ctx.shadowBlur = 12; }
+      ctx.beginPath(); ctx.arc(x, cy, knobR, 0, Math.PI * 2); ctx.fillStyle = primary; ctx.fill();
+      ctx.restore();
+    };
+    const pillKnob = () => {
+      if (noKnob) return;
+      const kh = 14 + 4 * (drag || 0);
+      ctx.beginPath(); ctx.roundRect(x - 1.5, cy - kh / 2, 3, kh, 1.5); ctx.fillStyle = primary; ctx.fill();
+    };
+
+    if (style === 'dots' || style === 'pulse') {
+      const step = style === 'dots' ? 7 : 4.5;
+      const n = Math.floor((right - left) / step);
+      for (let i = 0; i <= n; i++) {
+        const px = left + i * step;
+        if (!noKnob && Math.abs(px - x) < 4) continue;
+        const played = px <= x;
+        ctx.globalAlpha = played ? 1 : Math.max(0.28, railAlpha + 0.1);
+        ctx.fillStyle = played ? primary : dim;
+        if (style === 'dots') {
+          ctx.beginPath(); ctx.arc(px, cy, played ? 1.9 : 1.5, 0, Math.PI * 2); ctx.fill();
+        } else {
+          // Deterministic pseudo-waveform; bars near the playhead breathe while playing.
+          const r = Math.abs(Math.sin(i * 12.9898) * 43758.5453) % 1;
+          let bh = 3 + r * 9;
+          if (played && x - px < 30) bh *= 0.85 + 0.15 * Math.sin(o.phase * 2 + i);
+          ctx.beginPath(); ctx.roundRect(px - 1, cy - bh / 2, 2, bh, 1); ctx.fill();
+        }
+      }
+      ctx.globalAlpha = 1;
+      pillKnob();
+      return;
+    }
+
+    rail(style === 'neon' ? 2 : 3);
+    if (playedEnd > left) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      if (style === 'neon') {
+        const g = ctx.createLinearGradient(left, 0, playedEnd, 0);
+        g.addColorStop(0, '#1A5CF0'); g.addColorStop(0.6, '#2E9BFF'); g.addColorStop(1, '#5FD0FF');
+        ctx.strokeStyle = g; ctx.shadowColor = '#2E9BFF'; ctx.shadowBlur = 10;
+      } else {
+        ctx.strokeStyle = primary;
+      }
+      if (style === 'wave' && !o.flat) {
+        const k = (2 * Math.PI) / 30;
+        for (let px = left; px <= playedEnd; px += 2) {
+          // Amplitude eases to zero at both ends so the wave meets the knob cleanly.
+          const edge = Math.min(1, (px - left) / 12, (playedEnd - px) / 12);
+          const py = cy + Math.sin(o.phase - (playedEnd - px) * k) * 3.2 * Math.max(0, edge);
+          if (px === left) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+        }
+        ctx.lineTo(playedEnd, cy);
+      } else {
+        ctx.moveTo(left, cy); ctx.lineTo(playedEnd, cy);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
+    dotKnob(style === 'neon');
+  }
+
   function refreshCachedThemeColors() {
     const rootStyle = getComputedStyle(document.documentElement);
     cachedPrimaryColor = rootStyle.getPropertyValue('--md-sys-color-primary').trim() || '#6750A4';
@@ -3324,54 +3414,13 @@ document.addEventListener('DOMContentLoaded', async () => {
           const centerY = sh / 2;
 
           const showProgressBg = localStorage.getItem('moodex_progress_bg') === 'true';
-          if (showProgressBg && bgStartX < bgEndX - 1) {
-            sCtx.save();
-            sCtx.globalAlpha = 0.3;
-            sCtx.beginPath();
-            sCtx.lineWidth = 11;
-            sCtx.lineCap = 'round';
-            sCtx.strokeStyle = dimColor;
-            sCtx.moveTo(bgStartX, centerY);
-            sCtx.lineTo(bgEndX, centerY);
-            sCtx.stroke();
-            sCtx.restore();
-          }
-
-          if (waveEnd > waveStart) {
-            sCtx.beginPath();
-            sCtx.lineWidth = 9.5;
-            sCtx.lineCap = 'round';
-            sCtx.lineJoin = 'round';
-            sCtx.strokeStyle = primaryColor;
-
-            if (document.body.classList.contains('no-wavy')) {
-              sCtx.moveTo(waveStart, centerY);
-              sCtx.lineTo(waveEnd, centerY);
-              sCtx.stroke();
-            } else {
-              const step = 2;
-              for (let x = waveStart; x <= waveEnd; x += step) {
-                const angle = scrubPhase - (waveEnd - x) * k;
-                const y = centerY + Math.sin(angle) * 5;
-                if (x === waveStart) {
-                  sCtx.moveTo(x, y);
-                } else {
-                  sCtx.lineTo(x, y);
-                }
-              }
-
-              const finalY = centerY + Math.sin(scrubPhase) * 5;
-              sCtx.lineTo(waveEnd, finalY);
-              sCtx.stroke();
-            }
-          }
-
-          if (!noKnob) {
-            sCtx.beginPath();
-            sCtx.roundRect(knobLeft, centerY - curKnobH / 2, curKnobW, curKnobH, curKnobR);
-            sCtx.fillStyle = primaryColor;
-            sCtx.fill();
-          }
+          drawProgressStyle(sCtx, {
+            style: state.progressStyle || 'wave',
+            left: padLeft, right: bgEndX, x: knobCenterX, cy: centerY, h: sh,
+            primary: primaryColor, dim: dimColor, railAlpha: showProgressBg ? 0.42 : 0.2,
+            phase: scrubPhase, drag: scrubKnobAnim, noKnob,
+            flat: document.body.classList.contains('no-wavy')
+          });
         } else {
           const tvkScrubber = document.getElementById('tvk-squiggly-canvas');
           if (tvkScrubber) {
@@ -16362,6 +16411,48 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
+  // Progress bar style picker (Settings). Previews are drawn with the same
+  // renderer as the playbar, at 62% progress.
+  (function initProgressStylePicker() {
+    const picker = document.getElementById('progress-style-picker');
+    if (!picker) return;
+    const paint = () => {
+      if (!cachedPrimaryColor) refreshCachedThemeColors();
+      picker.querySelectorAll('.progress-style-opt').forEach((btn, i) => {
+        const cv = btn.querySelector('canvas');
+        const sel = btn.dataset.style === state.progressStyle;
+        btn.classList.toggle('active', sel);
+        btn.setAttribute('aria-checked', sel ? 'true' : 'false');
+        if (!cv) return;
+        const dpr = window.devicePixelRatio || 1;
+        const w = 132, hgt = 24;
+        if (cv.width !== w * dpr) { cv.width = w * dpr; cv.height = hgt * dpr; cv.style.width = w + 'px'; cv.style.height = hgt + 'px'; }
+        const ctx = cv.getContext('2d');
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.clearRect(0, 0, w, hgt);
+        drawProgressStyle(ctx, {
+          style: btn.dataset.style, left: 6, right: w - 6, x: 6 + (w - 12) * 0.62, cy: hgt / 2, h: hgt,
+          primary: cachedPrimaryColor || '#2E9BFF', dim: cachedDimColor || '#888', railAlpha: 0.3,
+          phase: 1.2 + i, drag: 0, noKnob: false, flat: false
+        });
+      });
+    };
+    picker.addEventListener('click', (e) => {
+      const btn = e.target.closest('.progress-style-opt');
+      if (!btn) return;
+      state.progressStyle = btn.dataset.style;
+      try { localStorage.setItem('moodex_progress_style', state.progressStyle); } catch (_) { }
+      // Keep the legacy wavy flag in step so perf mode and old code agree.
+      try { localStorage.setItem('moodex_wavy_progress', state.progressStyle === 'wave' ? 'true' : 'false'); } catch (_) { }
+      if (typeof updateWavyProgressUI === 'function') updateWavyProgressUI();
+      hasDrawnPausedFrame = false;
+      paint();
+    });
+    paint();
+    // Theme colours can change after start-up; repaint when Settings opens.
+    document.getElementById('nav-settings')?.addEventListener('click', () => setTimeout(paint, 60));
+  })();
+
   if (btnWavyProgress) {
     btnWavyProgress.addEventListener('click', () => {
       const isWavy = localStorage.getItem('moodex_wavy_progress') !== 'false';
@@ -18043,13 +18134,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   (function initUpdateUI() {
     const api = window.electronAPI;
     const $ = (id) => document.getElementById(id);
-    let currentAppVersion = '1.1.3';
+    let currentAppVersion = '1.1.4';
     if (api && api.getAppVersion) {
       api.getAppVersion().then((v) => {
         if (v) {
           currentAppVersion = v;
           const a = $('about-version'); if (a) a.textContent = 'Version ' + v;
           const t = document.querySelector('.settings-version-tag'); if (t) t.textContent = 'v' + v;
+          if (typeof window.refreshAboutLiner === 'function') window.refreshAboutLiner(v);
         }
       }).catch(() => { });
     } else {
@@ -20770,7 +20862,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (typeof showToast === 'function') showToast('No playlists to export', 'error');
       return;
     }
-    let appVer = '1.1.3';
+    let appVer = '1.1.4';
     try {
       if (window.electronAPI && window.electronAPI.getAppVersion) {
         const v = await window.electronAPI.getAppVersion();
@@ -25012,6 +25104,53 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
 
+
+  // --- About: "Liner notes" -------------------------------------------------
+  // The vinyl's centre label shows what is playing; "Your pressing" is the
+  // listener's own credits, from the local play stats.
+  (function initAboutLiner() {
+    const grid = document.getElementById('mx-pressing-grid');
+    if (!grid) return;
+    let knownVersion = '';
+    function refresh(ver) {
+      if (ver) knownVersion = ver;
+      const verEl = document.getElementById('about-version');
+      const v = knownVersion || ((verEl && verEl.textContent.match(/[\d.]+/)) || [''])[0];
+      if (v) {
+        const cat = document.getElementById('mx-catalog');
+        if (cat) cat.textContent = 'MDX-' + v.replace(/\./g, '') + ' · Side A';
+        const bc = document.getElementById('mx-barcode-text');
+        if (bc) bc.textContent = 'MDX ' + v + ' · MADE BY ROOTLESS';
+      }
+      const art = document.getElementById('mx-vinyl-art');
+      const tr = state.currentTrack;
+      const src = tr ? ((typeof getTrackThumbUrl === 'function' ? getTrackThumbUrl(tr) : '') || tr.thumbnail || tr.cover || '') : '';
+      if (art) {
+        if (src) { art.src = typeof proxiedThumb === 'function' ? proxiedThumb(src) : src; art.classList.add('has-art'); }
+        else { art.removeAttribute('src'); art.classList.remove('has-art'); }
+      }
+      const stats = typeof loadPlayStats === 'function' ? loadPlayStats() : {};
+      const rows = Object.values(stats);
+      const plays = rows.reduce((a, r) => a + (r.count || 0), 0);
+      const secs = rows.reduce((a, r) => a + (r.seconds || 0), 0);
+      const artists = new Set(rows.map(r => String(r.artist || '').toLowerCase()).filter(Boolean)).size;
+      const first = rows.reduce((m, r) => (r.firstPlayed && (!m || r.firstPlayed < m)) ? r.firstPlayed : m, 0);
+      const hours = secs / 3600;
+      const items = [
+        ['Plays', plays.toLocaleString()],
+        ['Listening', hours >= 1 ? hours.toFixed(hours >= 10 ? 0 : 1) + ' h' : Math.round(secs / 60) + ' min'],
+        ['Liked songs', (state.favorites || []).length.toLocaleString()],
+        ['Artists', artists.toLocaleString()],
+        ['First spin', first ? new Date(first).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '—']
+      ];
+      grid.innerHTML = items.map(([k, val]) => `<div><dt>${k}</dt><dd>${escapeHtml(String(val))}</dd></div>`).join('');
+    }
+    window.refreshAboutLiner = refresh;
+    document.addEventListener('click', (e) => {
+      if (e.target.closest('[data-cat="about"], #nav-settings')) setTimeout(() => refresh(), 30);
+    });
+    refresh();
+  })();
 
   const btnOpenShortcuts = document.getElementById('btn-open-shortcuts');
   const shortcutsModal = document.getElementById('shortcuts-modal');
