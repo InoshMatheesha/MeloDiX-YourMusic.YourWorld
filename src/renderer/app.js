@@ -24152,7 +24152,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   function renderTopArtistsHome() {
-    renderArtistRow('sp-top-artists-sec', 'sp-top-artists', getTopArtistsByPlays(16));
+    renderArtistRow('sp-top-artists-sec', 'sp-top-artists', getTopArtistsByPlays(12));
   }
 
   let similarArtistsGen = 0;
@@ -24179,7 +24179,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const list = (data && Array.isArray(data.artists)) ? data.artists : [];
       // Don't recommend artists they already follow.
       const known = new Set((getFavoriteArtistsList() || []).map(a => (a.name || '').toLowerCase()));
-      renderArtistRow('sp-similar-sec', 'sp-similar', list.filter(a => !known.has((a.name || '').toLowerCase())).slice(0, 16));
+      renderArtistRow('sp-similar-sec', 'sp-similar', list.filter(a => !known.has((a.name || '').toLowerCase())).slice(0, 12));
     } catch (e) {
       if (gen === similarArtistsGen) sec.style.display = 'none';
     }

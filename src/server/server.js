@@ -1665,8 +1665,8 @@ const thumbHostFails = new Map();
 // THUMBNAILS_DIR (warm), and the origin CDN (cold). Requests for the same key
 // are coalesced so a screen full of identical covers costs one network fetch.
 // ---------------------------------------------------------------------------
-const THUMB_MEM_CACHE_MAX_BYTES = 64 * 1024 * 1024; // ~64 MB ceiling
-const THUMB_MEM_CACHE_MAX_ENTRIES = 600;
+const THUMB_MEM_CACHE_MAX_BYTES = 20 * 1024 * 1024; // ~20 MB ceiling; the on-disk cache absorbs the rest
+const THUMB_MEM_CACHE_MAX_ENTRIES = 250;
 const thumbMemCache = new Map(); // key -> { buffer, type, bytes }; insertion order = LRU order
 const thumbInflight = new Map(); // key -> Promise
 let thumbMemCacheBytes = 0;
@@ -7879,7 +7879,7 @@ const server = http.createServer(async (req, res) => {
           const score = (prev ? prev.score : 0) + (20 - i);
           found.set(key, {
             name: a.name,
-            avatar: a.picture_xl || a.picture_big || a.picture_medium || '',
+            avatar: a.picture_big || a.picture_medium || a.picture_xl || '',
             fans: a.nb_fan || 0,
             score
           });

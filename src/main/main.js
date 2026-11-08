@@ -102,7 +102,10 @@ app.commandLine.appendSwitch('disable-background-networking');
 app.commandLine.appendSwitch('disable-domain-reliability');
 app.commandLine.appendSwitch('disable-sync');
 app.commandLine.appendSwitch('disable-speech-api');
-app.commandLine.appendSwitch('js-flags', '--max-old-space-size=384');
+// --expose-gc is what makes the three `global.gc()` calls in this file do
+// anything at all; without it `global.gc` is undefined and every one of them
+// was a silent no-op, so the periodic trim never ran.
+app.commandLine.appendSwitch('js-flags', '--max-old-space-size=384 --expose-gc');
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
 app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
 app.commandLine.appendSwitch('disk-cache-size', '52428800');
