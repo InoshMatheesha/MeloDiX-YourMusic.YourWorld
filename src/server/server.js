@@ -3713,7 +3713,13 @@ async function reresolveGoogleVideoUrl(videoId, staleUrl) {
       20000
     );
     const fresh = String(out || '').trim().split('\n').map(s => s.trim()).filter(s => s.startsWith('http'))[0];
-    return fresh || null;
+    if (fresh) return fresh;
+  } catch (e) { /* fall through */ }
+  // yt-dlp can be blocked outright ("Sign in to confirm you're not a bot").
+  // The player-API link is single-use, but the proxy consumes it immediately,
+  // so it is safe here and keeps playback going instead of skipping the song.
+  try {
+    return (await fetchDirectYoutubeStreamServer(id, 'medium')) || null;
   } catch (e) {
     return null;
   }

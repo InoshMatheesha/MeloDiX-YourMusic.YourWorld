@@ -11810,3 +11810,9 @@ body.is-playing .mx-vinyl-label { animation-play-state: running; }
 .mx-tt b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .setting-item[hidden] { display: none !important; }
+
+/* `all: unset` drops position:relative, and the global button::after hit-area
+   layer (inset:-10px) then stretched over the whole settings page and ate
+   every click. Re-anchor it to the button. */
+.mx-track, .progress-style-opt { position: relative !important; }
+.mx-track::after, .progress-style-opt::after { inset: 0 !important; }

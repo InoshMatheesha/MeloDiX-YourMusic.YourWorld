@@ -4473,6 +4473,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
 
       track._preloadedStreamUrl = data.streamUrl;
+      // Chart entries (iTunes ids) are matched to a YouTube video on the
+      // server; keep that id so a dead link can be re-resolved later.
+      if (data.resolvedId && /^[A-Za-z0-9_-]{11}$/.test(data.resolvedId)) track._ytId = data.resolvedId;
 
       if (hlsInstance) {
         hlsInstance.destroy();
@@ -7838,7 +7841,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       if (retryStage === 0 && currentSrc && !currentSrc.includes('/api/audio-proxy') && !currentSrc.includes('127.0.0.1')) {
         cur._errorRetryStage = 1;
-        const proxied = `http://127.0.0.1:${state.serverPort}/api/audio-proxy?url=${encodeURIComponent(currentSrc)}`;
+        const vidForProxy = cur._ytId || (/^[A-Za-z0-9_-]{11}$/.test(String(cur.id || '')) ? cur.id : '');
+        const proxied = `http://127.0.0.1:${state.serverPort}/api/audio-proxy?url=${encodeURIComponent(currentSrc)}${vidForProxy ? '&vid=' + encodeURIComponent(vidForProxy) : ''}`;
         el.nativeAudio.src = proxied;
         playSmooth();
         return;
@@ -18137,7 +18141,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   (function initUpdateUI() {
     const api = window.electronAPI;
     const $ = (id) => document.getElementById(id);
-    let currentAppVersion = '1.1.5';
+    let currentAppVersion = '1.1.6';
     if (api && api.getAppVersion) {
       api.getAppVersion().then((v) => {
         if (v) {
@@ -20865,7 +20869,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (typeof showToast === 'function') showToast('No playlists to export', 'error');
       return;
     }
-    let appVer = '1.1.5';
+    let appVer = '1.1.6';
     try {
       if (window.electronAPI && window.electronAPI.getAppVersion) {
         const v = await window.electronAPI.getAppVersion();
@@ -23091,10 +23095,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           const waveQueue = [...myWaveCurrentTracks];
           playTrack(track, waveQueue, curIdx);
         } else {
-          state.isRadioQueue = false;
-          state.myWaveActive = false;
-          const recentTracks = jumpBackCurrentTracks.length > 0 ? jumpBackCurrentTracks : getJumpBackTracks();
-          playTrack(track, [...recentTracks], curIdx);
+          startSongRadio(track);
         }
       } else if (row) {
         scrollCarouselTo(row, curIdx);
@@ -23688,7 +23689,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       tile.appendChild(img);
       tile.appendChild(text);
       tile.addEventListener('click', () => {
-        playTrack(track);
+        // Start a song radio so Next keeps going with similar music.
+        startSongRadio(track);
       });
       container.appendChild(tile);
     });
@@ -23864,8 +23866,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         sub: track.artist || track.uploader || 'Unknown artist',
         isExplicit: isTrackExplicit(track),
         onClick: () => {
-          state.isRadioQueue = false;
-          playTrack(track, [...filteredTracks], idx);
+          // Song radio seeded by this trending track: Next plays more in the
+          // same style and the queue refills itself, instead of a fixed list.
+          startSongRadio(track);
         }
       });
       row.appendChild(card);

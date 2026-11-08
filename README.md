@@ -51,6 +51,18 @@ Moodex is an open-source, telemetry-free desktop music app and player for **Wind
 
 Built with **Electron**, **Vanilla JavaScript**, and **WebGL**, Moodex provides responsive UI interactions and hardware-accelerated audio visualization without runtime framework overhead. The project is distributed under the **MIT license** and enforces strict privacy: all configuration, cached streams, and playback history remain strictly on the local machine.
 
+## What's new in v1.1.6
+
+- **Settings tabs no longer get stuck.** After opening About or Tracks, an
+  invisible click layer from the new tracklist / progress-style buttons
+  covered the whole settings page, so no other tab could be selected.
+- **Home plays keep going.** Songs started from Home (trending, quick picks,
+  recently played) now start a song radio: the queue fills with different
+  songs in the same style and keeps refilling, so Next stays on-vibe.
+- **Fewer skipped songs.** When a stream link dies and yt-dlp is blocked by
+  YouTube's bot check, the audio proxy now fetches a fresh link from
+  YouTube's player API instead of giving up and skipping the track.
+
 ## What's new in v1.1.5
 
 - **Progress bar style applies immediately.** Picking a style while music was
