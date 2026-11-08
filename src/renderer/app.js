@@ -8881,7 +8881,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const listEl = document.getElementById('album-tracks-list');
     if (listEl) {
       listEl.innerHTML = `<div class="m3-loader-container" style="display: flex; justify-content: center; align-items: center; padding: 64px 0; width: 100%;">
-        <svg class="g-spinner" viewBox="0 0 48 48"><circle cx="24" cy="24" r="20"/></svg>
+        ${moodexLoaderSVG(84)}
       </div>`;
     }
 
@@ -9116,14 +9116,48 @@ document.addEventListener('DOMContentLoaded', async () => {
     return x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
   }
 
+  // --- Moodex logo loader -------------------------------------------------
+  // One loader everywhere: the four waveform bars bounce like an equaliser,
+  // the M draws itself in the accent gradient, its fill breathes in behind the
+  // stroke and a highlight sweeps across. Pure CSS animation (no per-frame JS).
+  let moodexLoaderSeq = 0;
+  function moodexLoaderSVG(width = 96, extraClass = '') {
+    const n = ++moodexLoaderSeq;
+    const h = Math.round(width * 220 / 432);
+    const M = 'M127 350 L127 168 L173 168 L256 228 L339 168 L385 168 L385 350 L339 350 L339 250 L256 310 L173 250 L173 350 Z';
+    return `<svg class="moodex-loader ${extraClass}" width="${width}" height="${h}" viewBox="40 150 432 220" role="img" aria-label="Loading">
+      <defs>
+        <linearGradient id="mxg${n}" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#5FD0FF"/><stop offset="0.5" stop-color="#2E9BFF"/><stop offset="1" stop-color="#1A5CF0"/>
+        </linearGradient>
+        <linearGradient id="mxs${n}" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset="0.5" stop-color="#fff" stop-opacity="0.7"/><stop offset="1" stop-color="#fff" stop-opacity="0"/>
+        </linearGradient>
+        <clipPath id="mxc${n}"><path d="${M}"/></clipPath>
+      </defs>
+      <g fill="url(#mxg${n})">
+        <rect class="mx-bar mx-b1" x="66" y="206" width="22" height="100" rx="11"/>
+        <rect class="mx-bar mx-b2" x="100" y="171" width="22" height="170" rx="11"/>
+        <rect class="mx-bar mx-b3" x="390" y="171" width="22" height="170" rx="11"/>
+        <rect class="mx-bar mx-b4" x="424" y="206" width="22" height="100" rx="11"/>
+      </g>
+      <path class="mx-m-fill" d="${M}" fill="url(#mxg${n})"/>
+      <path class="mx-m-line" d="${M}" fill="none" stroke="url(#mxg${n})" stroke-width="9" stroke-linejoin="round" pathLength="100"/>
+      <g clip-path="url(#mxc${n})"><rect class="mx-sweep" x="0" y="150" width="120" height="220" fill="url(#mxs${n})"/></g>
+    </svg>`;
+  }
+  window.moodexLoaderSVG = moodexLoaderSVG;
+  // Static slots in index.html (track buffering overlay, updater).
+  document.querySelectorAll('[data-moodex-loader]').forEach(slot => {
+    slot.innerHTML = moodexLoaderSVG(parseInt(slot.dataset.moodexLoader, 10) || 64);
+  });
+
   function renderM3SearchLoader(container, size = 96) {
     if (!container) return;
     container.innerHTML = `
       <div class="m3-search-loader-wrap">
         <div class="m3-search-shape-stage">
-          <svg class="m3-search-loader" width="${size}" height="${size}" viewBox="-180 -180 360 360">
-            <path />
-          </svg>
+          ${moodexLoaderSVG(Math.round(size * 1.1))}
           <div class="m3-search-error-icon">
             <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
           </div>
@@ -9132,81 +9166,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       </div>
     `;
     const stage = container.querySelector('.m3-search-shape-stage');
-    const svg = container.querySelector('.m3-search-loader');
-    const path = svg ? svg.querySelector('path') : null;
-    if (!svg || !path) return;
-    const S = window.MoodexShapes;
-    if (!S || !S.ready()) return;
-
-    const STEP_MS = 1150;
-    const STEP_ANGLE = Math.PI / 3;
-    let fromIdx = 0;
-    let toIdx = S.next(0);
-    let stepStart = performance.now();
-    let baseAngle = 0;
-    let currentAngle = 0;
-    let lastVel = STEP_ANGLE / STEP_MS;
-    const K = S.K;
-
-    const stateObj = {
-      stopping: false,
-      stopStart: 0,
-      stopStartAngle: 0,
-      stopExtraAngle: 0,
-      stopped: false
+    container._m3LoaderState = {
+      triggerGearStop() { if (stage) stage.classList.add('is-error'); }
     };
-    container._m3LoaderState = stateObj;
-
-    function frame(now) {
-      if (!svg.isConnected || stateObj.stopped) return;
-      let eMorph = 0;
-
-      if (!stateObj.stopping) {
-        if (now - stepStart >= STEP_MS) {
-          fromIdx = toIdx;
-          toIdx = S.next(fromIdx);
-          baseAngle = (baseAngle + STEP_ANGLE) % (Math.PI * 2);
-          stepStart = now;
-        }
-        const rawT = Math.min(1, (now - stepStart) / STEP_MS);
-        const eased = easeInOutCubicFn(rawT);
-        eMorph = eased;
-        const prevAngle = currentAngle;
-        currentAngle = baseAngle + eased * STEP_ANGLE;
-        lastVel = Math.max(0.0003, Math.abs(currentAngle - prevAngle) / 16);
-      } else {
-        const STOP_DUR = 950;
-        const p = Math.min(1, (now - stateObj.stopStart) / STOP_DUR);
-        const decel = 1 - Math.pow(1 - p, 3);
-        currentAngle = stateObj.stopStartAngle + stateObj.stopExtraAngle * decel;
-        eMorph = easeInOutCubicFn(Math.min(1, (stateObj.stopStart - stepStart) / STEP_MS));
-        if (p >= 1) {
-          stateObj.stopped = true;
-        }
-      }
-
-      const a = S.profile(fromIdx);
-      const b = S.profile(toIdx);
-      let d = '';
-      for (let k = 0; k < K; k += 3) {
-        const th = -Math.PI + (Math.PI * 2 * k) / K + currentAngle;
-        const r = a[k] + (b[k] - a[k]) * eMorph;
-        d += `${k === 0 ? 'M' : 'L'}${(Math.cos(th) * r).toFixed(1)},${(Math.sin(th) * r).toFixed(1)}`;
-      }
-      path.setAttribute('d', d + 'Z');
-      if (!stateObj.stopped) requestAnimationFrame(frame);
-    }
-
-    stateObj.triggerGearStop = () => {
-      if (stateObj.stopping) return;
-      stateObj.stopping = true;
-      stateObj.stopStart = performance.now();
-      stateObj.stopStartAngle = currentAngle;
-      stateObj.stopExtraAngle = Math.max(0.38, Math.min(1.1, lastVel * 420));
-      if (stage) stage.classList.add('is-error');
-    };
-
-    requestAnimationFrame(frame);
   }
 
   function stopM3SearchLoaderWithError(container, errMessage) {
@@ -10777,39 +10739,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   function renderM3Loader(container, size = 52) {
     if (!container) return;
-    container.innerHTML = `
-      <div class="m3-loader-container" style="display:flex;justify-content:center;align-items:center;padding:48px 0;width:100%;">
-        <svg class="m3-search-loader" width="${size}" height="${size}" viewBox="-180 -180 360 360">
-          <path fill="var(--md-sys-color-primary)"/>
-        </svg>
-      </div>
-    `;
-    const svg = container.querySelector('.m3-search-loader');
-    const path = svg ? svg.querySelector('path') : null;
-    if (!svg || !path) return;
-    const S = window.MoodexShapes;
-    if (!S || !S.ready()) {
-      container.innerHTML = `<div class="m3-loader-container" style="display:flex;justify-content:center;align-items:center;padding:48px 0;width:100%;"><svg class="g-spinner" viewBox="0 0 48 48"><circle cx="24" cy="24" r="20"/></svg></div>`;
-      return;
-    }
-    let fromIdx = 0, toIdx = S.next(0), start = performance.now();
-    const K = S.K;
-    function frame(now) {
-      if (!svg.isConnected) return;
-      if (now - start >= 2000) { fromIdx = toIdx; toIdx = S.next(fromIdx); start = now; }
-      const e = S.ease(Math.min(1, (now - start) / 1200));
-      const a = S.profile(fromIdx), b = S.profile(toIdx);
-      const rot = ((now % 6000) / 6000) * Math.PI * 2;
-      let d = '';
-      for (let k = 0; k < K; k += 3) {
-        const th = -Math.PI + (Math.PI * 2 * k) / K + rot;
-        const r = a[k] + (b[k] - a[k]) * e;
-        d += `${k === 0 ? 'M' : 'L'}${(Math.cos(th) * r).toFixed(1)},${(Math.sin(th) * r).toFixed(1)}`;
-      }
-      path.setAttribute('d', d + 'Z');
-      requestAnimationFrame(frame);
-    }
-    requestAnimationFrame(frame);
+    container.innerHTML = `<div class="m3-loader-container" style="display:flex;justify-content:center;align-items:center;padding:48px 0;width:100%;">${moodexLoaderSVG(Math.round(size * 1.6))}</div>`;
   }
 
   async function openArtistProfile(artistName, hintTrack = null) {
@@ -18113,7 +18043,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   (function initUpdateUI() {
     const api = window.electronAPI;
     const $ = (id) => document.getElementById(id);
-    let currentAppVersion = '1.1.2';
+    let currentAppVersion = '1.1.3';
     if (api && api.getAppVersion) {
       api.getAppVersion().then((v) => {
         if (v) {
@@ -20840,7 +20770,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (typeof showToast === 'function') showToast('No playlists to export', 'error');
       return;
     }
-    let appVer = '1.1.2';
+    let appVer = '1.1.3';
     try {
       if (window.electronAPI && window.electronAPI.getAppVersion) {
         const v = await window.electronAPI.getAppVersion();
@@ -25435,7 +25365,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
-  const DEFAULT_SIDEBAR_ORDER = ['discover', 'search', 'favorites', 'albums', 'local', 'downloads', 'history', 'queue', 'wrapped'];
+  const DEFAULT_SIDEBAR_ORDER = ['discover', 'favorites', 'albums', 'local', 'downloads', 'history', 'queue', 'wrapped'];
 
   const SIDEBAR_ITEM_DEFS = {
     discover: { name: 'Home', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>' },
@@ -25444,7 +25374,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     local: { name: 'My files', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>' },
     history: { name: 'History', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>' },
     queue: { name: 'Queue', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="14" y2="17"/></svg>' },
-    search: { name: 'Search', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg>' },
     downloads: { name: 'Downloads', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12"/><polyline points="7 11 12 16 17 11"/><path d="M5 21h14"/></svg>' },
     wrapped: { name: 'Wrapped', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l1.9 4.6 4.6 1.9-4.6 1.9L12 16l-1.9-4.6L5.5 9.5l4.6-1.9L12 3Z"/></svg>' }
   };

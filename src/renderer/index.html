@@ -129,15 +129,6 @@
           <span class="nav-label" data-i18n>Home</span>
         </button>
 
-        <button class="nav-item" data-view="search" id="nav-search" title="Search">
-          <div class="nav-indicator">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="11" cy="11" r="7"></circle>
-              <line x1="21" y1="21" x2="16.5" y2="16.5"></line>
-            </svg>
-          </div>
-          <span class="nav-label" data-i18n>Search</span>
-        </button>
 
         <button class="nav-item" data-view="favorites" id="nav-favorites" title="Liked">
           <div class="nav-indicator">
@@ -2468,12 +2459,7 @@
   <audio id="native-audio" crossorigin="anonymous" preload="auto"></audio>
 
   <div class="track-loading-overlay hidden" id="track-loading-overlay">
-    <div class="m3-spinner-container">
-      <svg class="m3-circular-progress" viewBox="0 0 48 48">
-        <circle class="m3-spinner-track" cx="24" cy="24" r="18" fill="none" stroke-width="4"></circle>
-        <circle class="m3-spinner-head" cx="24" cy="24" r="18" fill="none" stroke-width="4"></circle>
-      </svg>
-    </div>
+    <div class="m3-spinner-container mx-loader-pill" data-moodex-loader="46"></div>
   </div>
 
   <div class="modal-backdrop cache-backdrop hidden" id="cache-modal">
@@ -3562,7 +3548,7 @@
       </div>
     </div>
     <div class="ota-center-spinner hidden" id="update-center-spinner">
-      <svg class="g-spinner" width="46" height="46" viewBox="0 0 48 48"><circle cx="24" cy="24" r="20"/></svg>
+      <span class="ota-loader-slot" data-moodex-loader="88"></span>
       <span class="ota-spinner-label" id="update-spinner-label" data-i18n>Updating Moodex...</span>
     </div>
   </div>
