@@ -6577,6 +6577,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     setPlayPauseState(isTvPlaying, false);
     updateTvkOutput();
     if (tvkOutputInterval) clearInterval(tvkOutputInterval);
+    hookTvkDeviceChange();
     tvkOutputInterval = setInterval(updateTvkOutput, 30000);
   }
 
@@ -6676,7 +6677,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     tvkSeekSlider.addEventListener('change', stopTvkSeek);
   }
 
-  if (navigator.mediaDevices && typeof navigator.mediaDevices.addEventListener === 'function') {
+  // Registering a 'devicechange' listener switches on Chromium's media device
+  // monitoring, which costs a VideoCaptureService process for the whole
+  // session. This label only exists inside TV karaoke, so subscribe when that
+  // view opens instead of at startup.
+  let tvkDeviceHooked = false;
+  function hookTvkDeviceChange() {
+    if (tvkDeviceHooked) return;
+    if (!navigator.mediaDevices || typeof navigator.mediaDevices.addEventListener !== 'function') return;
+    tvkDeviceHooked = true;
     navigator.mediaDevices.addEventListener('devicechange', () => {
       updateTvkOutput();
     });
@@ -17507,6 +17516,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (audioOutputTrigger && audioOutputDropdown) {
     audioOutputTrigger.addEventListener('click', (e) => {
       e.stopPropagation();
+      // Populate the list the first time it is actually opened. See the note
+      // at the startup call below for why this is not done eagerly.
+      if (!audioOutputDropdown.classList.contains('open')) {
+        refreshAudioOutputDevices();
+        hookDeviceChange();
+      }
       audioOutputDropdown.classList.toggle('open');
     });
     document.addEventListener('click', () => {
@@ -17514,7 +17529,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
-  if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+  // Subscribing to 'devicechange' turns on Chromium's device monitoring, which
+  // is the other thing that starts the VideoCaptureService process. It only
+  // earns its keep once the user is pinned to a specific output device (so we
+  // can notice it disappearing), so wire it up on demand rather than at boot.
+  let deviceChangeHooked = false;
+  function hookDeviceChange() {
+    if (deviceChangeHooked) return;
+    if (!navigator.mediaDevices || !navigator.mediaDevices.addEventListener) return;
+    deviceChangeHooked = true;
     navigator.mediaDevices.addEventListener('devicechange', async () => {
       try {
         const devices = await navigator.mediaDevices.enumerateDevices();
@@ -17539,11 +17562,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
-  refreshAudioOutputDevices().then(() => {
-    if (currentAudioOutputDeviceId && currentAudioOutputDeviceId !== 'default') {
-      applyAudioOutputDevice(currentAudioOutputDeviceId);
-    }
-  });
+  // navigator.mediaDevices.enumerateDevices() reports cameras as well as audio
+  // outputs, and asking for it makes Chromium spawn the VideoCaptureService
+  // utility process - an entire extra process, in a music player, purely to
+  // populate a dropdown most people never open. Only enumerate at startup when
+  // a specific output device actually has to be restored; otherwise wait until
+  // the dropdown is opened.
+  if (currentAudioOutputDeviceId && currentAudioOutputDeviceId !== 'default') {
+    hookDeviceChange();
+    refreshAudioOutputDevices().then(() => applyAudioOutputDevice(currentAudioOutputDeviceId));
+  }
 
   const sliderCrossfade = document.getElementById('slider-crossfade');
   const valCrossfade = document.getElementById('val-crossfade');
@@ -24075,6 +24103,145 @@ document.addEventListener('DOMContentLoaded', async () => {
     renderTrending();
     renderMadeForYou();
     renderFavArtistsHome();
+    renderTopArtistsHome();
+    renderPlayedAlbumsHome();
+    renderSimilarArtistsHome();
+  }
+
+  // ---------------------------------------------------------------------
+  // Behaviour-driven home rows
+  //
+  // These are built from the play tally rather than from anything the user
+  // had to curate, so the home page fills itself in as they listen: top
+  // artists by play count, albums they have actually played, and artists
+  // related to the ones they play most.
+  // ---------------------------------------------------------------------
+
+  // Artists ranked by observed plays. Returns [] before there is any history,
+  // which keeps the row hidden rather than showing an empty shelf.
+  function getTopArtistsByPlays(limit = 16) {
+    let stats = {};
+    try { stats = (typeof loadPlayStats === 'function') ? loadPlayStats() : {}; } catch (e) { return []; }
+    const byArtist = new Map();
+    Object.values(stats).forEach(rec => {
+      if (!rec || !rec.artist) return;
+      const name = String(rec.artist).trim();
+      if (!name || /^unknown artist$/i.test(name)) return;
+      const key = name.toLowerCase();
+      const cur = byArtist.get(key) || { name, plays: 0, seconds: 0 };
+      cur.plays += Number(rec.count) || 0;
+      cur.seconds += Number(rec.seconds) || 0;
+      byArtist.set(key, cur);
+    });
+    return [...byArtist.values()].sort((a, b) => b.plays - a.plays).slice(0, limit);
+  }
+
+  function renderArtistRow(secId, rowId, artists) {
+    const sec = document.getElementById(secId);
+    const row = document.getElementById(rowId);
+    if (!sec || !row) return;
+    if (!artists || !artists.length) {
+      sec.style.display = 'none';
+      return;
+    }
+    sec.style.display = '';
+    row.innerHTML = '';
+    const frag = document.createDocumentFragment();
+    artists.forEach(a => frag.appendChild(buildFavArtistCircleCard(a, false, 0, true)));
+    row.appendChild(frag);
+  }
+
+  function renderTopArtistsHome() {
+    renderArtistRow('sp-top-artists-sec', 'sp-top-artists', getTopArtistsByPlays(16));
+  }
+
+  let similarArtistsGen = 0;
+  async function renderSimilarArtistsHome() {
+    const sec = document.getElementById('sp-similar-sec');
+    const row = document.getElementById('sp-similar');
+    if (!sec || !row || !state.serverPort) return;
+
+    // Seed from what they play most, falling back to followed artists.
+    let seeds = getTopArtistsByPlays(5).map(a => a.name);
+    if (seeds.length < 2) {
+      seeds = (getFavoriteArtistsList() || []).slice(0, 5).map(a => a.name).filter(Boolean);
+    }
+    if (!seeds.length) {
+      sec.style.display = 'none';
+      return;
+    }
+
+    const gen = ++similarArtistsGen;
+    try {
+      const res = await fetch(`http://127.0.0.1:${state.serverPort}/api/related-artists?artists=${encodeURIComponent(seeds.join('\n'))}`);
+      const data = await res.json();
+      if (gen !== similarArtistsGen) return; // a newer render superseded this
+      const list = (data && Array.isArray(data.artists)) ? data.artists : [];
+      // Don't recommend artists they already follow.
+      const known = new Set((getFavoriteArtistsList() || []).map(a => (a.name || '').toLowerCase()));
+      renderArtistRow('sp-similar-sec', 'sp-similar', list.filter(a => !known.has((a.name || '').toLowerCase())).slice(0, 16));
+    } catch (e) {
+      if (gen === similarArtistsGen) sec.style.display = 'none';
+    }
+  }
+
+  // Albums assembled from listening history. Tracks only carry an album when
+  // the source provided one, so this row stays hidden until a few do.
+  function renderPlayedAlbumsHome() {
+    const sec = document.getElementById('sp-played-albums-sec');
+    const row = document.getElementById('sp-played-albums');
+    if (!sec || !row) return;
+
+    const albums = new Map();
+    const consider = (t) => {
+      if (!t) return;
+      const name = String(t.album || '').trim();
+      if (!name) return;
+      const key = (name + '|' + (t.artist || '')).toLowerCase();
+      const cur = albums.get(key) || {
+        title: name,
+        artist: t.artist || '',
+        cover: '',
+        plays: 0,
+        lastPlayed: 0
+      };
+      cur.plays += 1;
+      if (!cur.cover) cur.cover = t.thumbnail || t.cover || '';
+      cur.lastPlayed = Math.max(cur.lastPlayed, Number(t.playedAt) || 0);
+      albums.set(key, cur);
+    };
+    (state.history || []).forEach(consider);
+    (state.favorites || []).forEach(consider);
+
+    const list = [...albums.values()]
+      .sort((a, b) => (b.lastPlayed - a.lastPlayed) || (b.plays - a.plays))
+      .slice(0, 16);
+
+    if (list.length < 2) {
+      sec.style.display = 'none';
+      return;
+    }
+    sec.style.display = '';
+    row.innerHTML = list.map(al => {
+      const cover = al.cover ? proxiedThumb(al.cover) : '';
+      return `<div class="sp-card played-album-card" data-album="${escapeHtml(al.title)}" data-artist="${escapeHtml(al.artist)}">
+        <div class="sp-card-cover${cover ? '' : ' sp-cover-fallback'}">
+          ${cover ? `<img src="${escapeHtml(cover)}" alt="" loading="lazy" decoding="async" onerror="this.closest('.sp-card-cover').classList.add('sp-cover-fallback'); this.remove();">` : ''}
+        </div>
+        <div class="sp-card-title">${escapeHtml(al.title)}</div>
+        <div class="sp-card-sub">${escapeHtml(al.artist || 'Album')}</div>
+      </div>`;
+    }).join('');
+
+    row.querySelectorAll('.played-album-card').forEach(card => {
+      card.addEventListener('click', () => {
+        const q = `${card.dataset.artist || ''} ${card.dataset.album || ''}`.trim();
+        if (!q || !el.searchInput) return;
+        el.searchInput.value = q;
+        el.searchInput.dispatchEvent(new Event('input', { bubbles: true }));
+        el.searchInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      });
+    });
   }
 
   function applyHomeLayout() {
@@ -25214,13 +25381,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
-  const DEFAULT_HOME_ORDER = ['sp-made-sec', 'sp-quick-sec', 'sp-trend-sec', 'sp-artists-sec'];
+  const DEFAULT_HOME_ORDER = ['sp-made-sec', 'sp-quick-sec', 'sp-top-artists-sec', 'sp-similar-sec', 'sp-played-albums-sec', 'sp-trend-sec', 'sp-artists-sec'];
 
   const HOME_SECTION_DEFS = {
     'sp-made-sec': { name: 'For you', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 10v2M8 6v10M12 2v18M16 6v10M20 10v2"/></svg>' },
     'sp-quick-sec': { name: 'Home / Quick picks', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>' },
     'sp-trend-sec': { name: 'Trending in Sri Lanka', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2c1 4 5 5.5 5 10a5 5 0 0 1-10 0c0-2 1-3 2-4 0 2 1 3 2 3 0-3-1-6 1-9z"/></svg>' },
-    'sp-artists-sec': { name: 'Favorite artists', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>' }
+    'sp-artists-sec': { name: 'Favorite artists', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>' },
+    'sp-top-artists-sec': { name: 'Your top artists', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>' },
+    'sp-similar-sec': { name: 'Artists you might like', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l1.9 4.6 4.6 1.9-4.6 1.9L12 16l-1.9-4.6L5.5 9.5l4.6-1.9L12 3Z"/></svg>' },
+    'sp-played-albums-sec': { name: "Albums you've played", icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>' }
   };
 
   function getHomeSectionsOrder() {

@@ -49,10 +49,29 @@ process.on('unhandledRejection', (reason) => {
 });
 
 const enabledFeatures = [];
+
+// Chromium takes a single --disable-features list. appendSwitch does not merge,
+// it replaces, so the previous code's second call silently discarded the first:
+// on Windows only CalculateNativeWinOcclusion was ever disabled, and the
+// out-of-process audio service kept running. Collect everything, append once.
+const disabledFeatures = [
+  // Chromium keeps a warm spare renderer ready for a navigation that, in a
+  // single-window desktop app, never comes. It is a whole idle process.
+  'SpareRendererForSitePerProcess',
+  // Audio in its own process buys isolation we do not need and costs a process
+  // plus its own copy of the audio stack.
+  'AudioServiceOutOfProcess',
+  'AudioServiceOutOfProcessKillAtHang',
+  // If anything does enumerate media devices, keep video capture in-process
+  // rather than letting it claim a utility process of its own.
+  'MojoVideoCapture',
+  'MojoVideoCaptureSecondary'
+];
+
 if (process.platform === 'linux') {
   enabledFeatures.push('WaylandWindowDecorations', 'UseOzonePlatform', 'WaylandFractionalScaleV1', 'MediaSessionService', 'HardwareMediaKeyHandling');
   app.commandLine.appendSwitch('ozone-platform-hint', 'auto');
-  app.commandLine.appendSwitch('disable-features', 'Vulkan,AudioServiceOutOfProcess');
+  disabledFeatures.push('Vulkan');
 
   if (process.env.MOODEX_SKIP_GPU_BUFFER_FLAGS !== '1') {
     app.commandLine.appendSwitch('disable-gpu-memory-buffer-video-frames');
@@ -62,12 +81,16 @@ if (process.platform === 'linux') {
 
 if (process.platform === 'win32') {
   enabledFeatures.push('HardwareMediaKeyHandling', 'MediaSessionService');
-  app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
+  disabledFeatures.push('CalculateNativeWinOcclusion');
+  // Skips a short-lived helper process that probes DX12/Vulkan support at
+  // startup purely to populate diagnostics.
+  app.commandLine.appendSwitch('disable-gpu-process-for-dx12-vulkan-info-collection');
 }
 
 if (enabledFeatures.length > 0) {
   app.commandLine.appendSwitch('enable-features', enabledFeatures.join(','));
 }
+app.commandLine.appendSwitch('disable-features', disabledFeatures.join(','));
 
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 app.commandLine.appendSwitch('ignore-gpu-blocklist');

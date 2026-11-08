@@ -7846,6 +7846,55 @@ const server = http.createServer(async (req, res) => {
     return handleTrending(req, res);
   }
 
+  // Artists similar to the ones the user actually listens to. Seeded with the
+  // caller's top artists; seeds themselves are filtered out of the result.
+  if (parsedUrl.pathname === '/api/related-artists') {
+    const seeds = String(parsedUrl.query.artists || '')
+      .split('\n').map(s => s.trim()).filter(Boolean).slice(0, 6);
+    if (!seeds.length) {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ success: true, artists: [] }));
+    }
+
+    const cacheKey = 'related:' + seeds.join('|').toLowerCase();
+    const cached = artistCache.get(cacheKey);
+    if (cached && Date.now() < cached.expires) {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ success: true, artists: cached.artists }));
+    }
+
+    const seedSet = new Set(seeds.map(s => s.toLowerCase()));
+    const found = new Map();
+    await Promise.all(seeds.map(async (name) => {
+      try {
+        const id = await dzArtistId(name);
+        if (!id) return;
+        const data = await httpGetJson(`https://api.deezer.com/artist/${encodeURIComponent(id)}/related?limit=20`, 6000);
+        (data?.data || []).forEach((a, i) => {
+          if (!a || !a.name) return;
+          const key = a.name.toLowerCase();
+          if (seedSet.has(key)) return; // already a favourite, not a discovery
+          const prev = found.get(key);
+          // Appearing under several seeds is a strong signal, so count it.
+          const score = (prev ? prev.score : 0) + (20 - i);
+          found.set(key, {
+            name: a.name,
+            avatar: a.picture_xl || a.picture_big || a.picture_medium || '',
+            fans: a.nb_fan || 0,
+            score
+          });
+        });
+      } catch (e) { /* one dead seed should not sink the row */ }
+    }));
+
+    const artists = [...found.values()].sort((a, b) => b.score - a.score).slice(0, 20)
+      .map(({ name, avatar, fans }) => ({ name, avatar, fans }));
+    artistCache.set(cacheKey, { artists, expires: Date.now() + 6 * 3600 * 1000 });
+
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({ success: true, artists }));
+  }
+
   if (parsedUrl.pathname === '/api/artist') {
     const name = parsedUrl.query.name || '';
     const hintTrack = parsedUrl.query.hintTrack || '';

@@ -10897,23 +10897,6 @@ body.perf .btn-pill-primary { animation: none !important; }
 .sidebar-nav::-webkit-scrollbar { width: 0; height: 0; }
 
 /* Below ~1100px the expanded rail costs too much of the content area. */
-@media (max-width: 1100px) {
-  .sidebar:not(.rail-collapsed) { width: var(--sidebar-w-collapsed); padding: 16px 0; align-items: center; }
-  .sidebar:not(.rail-collapsed) .nav-label,
-  .sidebar:not(.rail-collapsed) .nav-section-label { display: none; }
-  .sidebar:not(.rail-collapsed) .sidebar-nav { align-items: center; gap: 12px; }
-  .sidebar:not(.rail-collapsed) .sidebar-nav .nav-item {
-    width: 48px !important;
-    height: 48px !important;
-    border-radius: 50% !important;
-    margin: 0 auto;
-    justify-content: center;
-    padding: 0;
-  }
-  .sidebar:not(.rail-collapsed) .rail-icon-btn { width: 44px; justify-content: center; padding: 0; }
-  .sidebar:not(.rail-collapsed) .nav-badge { position: absolute !important; margin-left: 0; }
-}
-
 /* --------------------------------------------------------------------------
    3. New views
    -------------------------------------------------------------------------- */
@@ -11265,14 +11248,90 @@ body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .rail-drawer
   left: var(--sidebar-w-expanded) !important;
 }
 
+/* --------------------------------------------------------------------------
+   Compact rail
+   --------------------------------------------------------------------------
+   The labelled rail was 232px of mostly empty space. This stacks the label
+   under its icon so a destination costs one narrow column instead of a wide
+   row: the words stay, the rail drops to 92px, and the content area gets the
+   difference back.
+   -------------------------------------------------------------------------- */
+
+:root { --sidebar-w-expanded: 92px; }
+
+body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) {
+  padding: 10px 6px 14px 6px !important;
+}
+
+body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .sidebar-nav {
+  gap: 2px;
+}
+
+/* Icon above, label below, both centred. */
+body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .sidebar-nav .nav-item,
+body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .rail-icon-btn,
+body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) #nav-discover {
+  flex-direction: column !important;
+  justify-content: center !important;
+  align-items: center !important;
+  gap: 5px !important;
+  width: 100% !important;
+  height: auto !important;
+  min-height: 62px !important;
+  padding: 9px 2px !important;
+  border-radius: 16px !important;
+}
+
+body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .nav-label {
+  font-size: calc(10.5px * var(--font-scale, 1));
+  font-weight: 560;
+  letter-spacing: 0.1px;
+  line-height: 1.1;
+  text-align: center;
+  max-width: 100%;
+}
+
+/* The active row is a rounded tile rather than a full-width bar. */
+body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .sidebar-nav .nav-item.active {
+  background: color-mix(in srgb, var(--md-sys-color-primary) 22%, transparent) !important;
+  color: var(--md-sys-color-on-surface) !important;
+}
+
+body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .sidebar-nav .nav-item.active .nav-indicator {
+  color: var(--md-sys-color-primary) !important;
+}
+
+body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .sidebar-nav .nav-item.active .nav-label {
+  color: var(--md-sys-color-on-surface) !important;
+  font-weight: 680;
+}
+
+/* Badges would collide with a centred icon, so they ride its corner. */
+body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .nav-badge {
+  position: absolute !important;
+  top: -4px;
+  right: -8px;
+  margin-left: 0;
+}
+
+body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .nav-indicator {
+  overflow: visible;
+}
+
+body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .rail-divider {
+  margin: 8px auto 4px;
+  width: 44px;
+}
+
+/* The collapse toggle centres too, now that there is no row to align to. */
+body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .sidebar-rail-toggle {
+  justify-content: center;
+  padding: 0 0 4px;
+}
+
 @media (max-width: 1100px) {
   body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) {
-    width: var(--sidebar-w-collapsed) !important;
-    padding: 12px 0 16px 0 !important;
-    align-items: center !important;
-  }
-  body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .rail-drawer {
-    left: var(--sidebar-w-collapsed) !important;
+    padding: 10px 4px 14px 4px !important;
   }
 }
 
