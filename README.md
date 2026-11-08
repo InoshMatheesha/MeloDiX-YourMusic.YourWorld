@@ -51,6 +51,17 @@ Moodex is an open-source, telemetry-free desktop music app and player for **Wind
 
 Built with **Electron**, **Vanilla JavaScript**, and **WebGL**, Moodex provides responsive UI interactions and hardware-accelerated audio visualization without runtime framework overhead. The project is distributed under the **MIT license** and enforces strict privacy: all configuration, cached streams, and playback history remain strictly on the local machine.
 
+## What's new in v1.1.8
+
+- **Cover shapes.** Settings -> Tracks -> *Cover shape*, after the visualizer
+  styles, picks the shape of the album cover in the playbar, with live
+  previews: **Morph** (cycles Material shapes, as before), **Square** (no
+  shaping), **Circle**, **Squircle**, **Cookie**, **Clover**, **Flower**,
+  **Sunny**, **Star**, **Heart** and **Gem**. The cover morphs smoothly into
+  the chosen shape, keeps turning gently while music plays (the heart stays
+  upright), and the wavy progress ring follows the shape. With "Shaped covers
+  in Now Playing & Karaoke" on, those covers use it too.
+
 ## What's new in v1.1.7
 
 - **Visualizer styles.** Settings -> Tracks -> *Visualizer style*, right under

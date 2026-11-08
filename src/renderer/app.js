@@ -225,6 +225,16 @@ document.addEventListener('DOMContentLoaded', async () => {
   var cacheModal = null;
   var syncState = { active: false, track: null, lines: [], currentIndex: 0 };
   var isDraggingTvkSeek = false;
+  // Cover shape style (Settings > Tracks). 'morph' cycles the Material shapes,
+  // 'square' turns shaping off, anything else holds one shape.
+  var COVER_SHAPE_MAP = { circle: 'Circle', squircle: 'Squircle', cookie: 'Cookie9Sided', clover: 'Clover4Leaf', flower: 'Flower8', sunny: 'Sunny16', star: 'Star5', gem: 'Gem6', heart: 'Heart' };
+  var coverShapeStyle = (function () {
+    try {
+      var v = localStorage.getItem('moodex_cover_shape');
+      if (v === 'morph' || v === 'square' || COVER_SHAPE_MAP[v]) return v;
+      return localStorage.getItem('moodex_m3_cover') === '0' ? 'square' : 'morph';
+    } catch (_) { return 'morph'; }
+  })();
   var m3c = { canvas: null, ctx: null, img: new Image(), imgReady: false, from: 0, to: 0, start: 0, raf: 0, last: 0, phase: 0, hoverProgress: 0, isHovered: false, rotation: 0, rotRate: 0.25, targetRate: 0.25 };
 
   function escapeHtml(value) {
@@ -16176,7 +16186,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     const S = window.MoodexShapes;
     if (!S || !S.ready()) return null;
     if (!m3c.start) { m3c.start = now; m3c.from = 0; m3c.to = 0; }
-    if (now - m3c.start >= S.HOLD_MS) { m3c.from = m3c.to; m3c.to = S.next(m3c.from); m3c.start = now; }
+    const fixedName = COVER_SHAPE_MAP[coverShapeStyle];
+    const fixedIdx = fixedName && S.indexOf ? S.indexOf(fixedName) : -1;
+    if (fixedIdx >= 0) {
+      // Morph once into the chosen shape, then hold it.
+      if (m3c.to !== fixedIdx) { m3c.from = m3c.to; m3c.to = fixedIdx; m3c.start = now; }
+    } else if (now - m3c.start >= S.HOLD_MS) { m3c.from = m3c.to; m3c.to = S.next(m3c.from); m3c.start = now; }
     const t = Math.min(1, (now - m3c.start) / S.MORPH_MS);
     return { a: S.profile(m3c.from), b: S.profile(m3c.to), e: S.ease(t) };
   }
@@ -16193,7 +16208,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     const cy = CANVAS_PX / 2 - hoverLift;
     const currentCover = COVER_PX * hoverScale;
     const scale = (currentCover / 2) / 160 * 1.02;
-    const rot = m3c.rotation || 0;
+    // A spinning heart looks wrong; keep it upright.
+    const rot = coverShapeStyle === 'heart' ? 0 : (m3c.rotation || 0);
     const rawRadiusAt = (shapeAngle) => {
       const f = ((shapeAngle + Math.PI) / (Math.PI * 2)) * K;
       const i0 = ((Math.floor(f) % K) + K) % K;
@@ -16517,9 +16533,88 @@ document.addEventListener('DOMContentLoaded', async () => {
       const next = !toggleM3Cover.classList.contains('active');
       toggleM3Cover.classList.toggle('active', next);
       localStorage.setItem('moodex_m3_cover', next ? '1' : '0');
+      coverShapeStyle = next ? (coverShapeStyle === 'square' ? 'morph' : coverShapeStyle) : 'square';
+      localStorage.setItem('moodex_cover_shape', coverShapeStyle);
       applyM3Cover();
     });
   }
+
+  // Cover shape picker (Settings > Tracks, after the visualizer styles).
+  (function initCoverShapePicker() {
+    const picker = document.getElementById('cover-shape-picker');
+    if (!picker) return;
+    const SZ = 56;
+    let timer = 0;
+    function drawShape(ctx, style, t) {
+      const S = window.MoodexShapes;
+      const cx = SZ / 2, cy = SZ / 2, R = SZ / 2 - 6;
+      const g = ctx.createLinearGradient(0, 0, SZ, SZ);
+      g.addColorStop(0, '#5FD0FF'); g.addColorStop(0.55, '#2E9BFF'); g.addColorStop(1, '#1A5CF0');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      if (style === 'square' || !S || !S.ready()) {
+        ctx.roundRect(cx - R, cy - R, R * 2, R * 2, 8);
+      } else {
+        let a, b, e = 0;
+        if (style === 'morph') {
+          const n = 4, phase = (t / 1.6) % n, i0 = Math.floor(phase);
+          a = S.profile(i0); b = S.profile((i0 + 1) % n); e = S.ease(Math.min(1, (phase - i0) * 1.6));
+        } else {
+          a = b = S.profile(S.indexOf(COVER_SHAPE_MAP[style]));
+        }
+        const K = S.K, rot = (style === 'heart' || style === 'morph') ? 0 : t * 0.4;
+        for (let k = 0; k <= K; k += 2) {
+          const i = k % K, th = -Math.PI + (Math.PI * 2 * i) / K;
+          const r = (a[i] + (b[i] - a[i]) * e) / 160 * R;
+          const x = cx + Math.cos(th + rot) * r, y = cy + Math.sin(th + rot) * r;
+          if (k === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        }
+        ctx.closePath();
+      }
+      ctx.fill();
+      // Little "album" glyph so it reads as a cover.
+      ctx.fillStyle = 'rgba(255,255,255,0.9)';
+      ctx.beginPath(); ctx.arc(cx, cy, 4, 0, Math.PI * 2); ctx.fill();
+    }
+    function frame() {
+      timer = 0;
+      if (!picker.isConnected || picker.offsetParent === null) return;
+      const t = performance.now() / 1000;
+      const dpr = window.devicePixelRatio || 1;
+      picker.querySelectorAll('.progress-style-opt').forEach(btn => {
+        const sel = btn.dataset.cover === coverShapeStyle;
+        btn.classList.toggle('active', sel);
+        btn.setAttribute('aria-checked', sel ? 'true' : 'false');
+        const cv = btn.querySelector('canvas');
+        if (!cv) return;
+        if (cv.width !== Math.round(SZ * dpr)) { cv.width = Math.round(SZ * dpr); cv.height = Math.round(SZ * dpr); cv.style.width = SZ + 'px'; cv.style.height = SZ + 'px'; }
+        const ctx = cv.getContext('2d');
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.clearRect(0, 0, SZ, SZ);
+        drawShape(ctx, btn.dataset.cover, t);
+      });
+      timer = setTimeout(() => requestAnimationFrame(frame), 40);
+    }
+    function kick() { if (!timer) frame(); }
+    picker.addEventListener('click', (e) => {
+      const btn = e.target.closest('.progress-style-opt');
+      if (!btn) return;
+      coverShapeStyle = btn.dataset.cover;
+      try {
+        localStorage.setItem('moodex_cover_shape', coverShapeStyle);
+        localStorage.setItem('moodex_m3_cover', coverShapeStyle === 'square' ? '0' : '1');
+      } catch (_) { }
+      const tgl = document.getElementById('toggle-m3-cover');
+      if (tgl) tgl.classList.toggle('active', coverShapeStyle !== 'square');
+      if (typeof applyM3Cover === 'function') applyM3Cover();
+      if (typeof m3cStart === 'function' && coverShapeStyle !== 'square') m3cStart();
+      kick();
+    });
+    document.addEventListener('click', (e) => {
+      if (e.target.closest('[data-cat="tracks"], #nav-settings')) setTimeout(kick, 80);
+    });
+    kick();
+  })();
 
   const toggleM3Hero = document.getElementById('toggle-m3-hero-covers');
   if (toggleM3Hero) {
@@ -18298,7 +18393,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   (function initUpdateUI() {
     const api = window.electronAPI;
     const $ = (id) => document.getElementById(id);
-    let currentAppVersion = '1.1.7';
+    let currentAppVersion = '1.1.8';
     if (api && api.getAppVersion) {
       api.getAppVersion().then((v) => {
         if (v) {
@@ -21026,7 +21121,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (typeof showToast === 'function') showToast('No playlists to export', 'error');
       return;
     }
-    let appVer = '1.1.7';
+    let appVer = '1.1.8';
     try {
       if (window.electronAPI && window.electronAPI.getAppVersion) {
         const v = await window.electronAPI.getAppVersion();

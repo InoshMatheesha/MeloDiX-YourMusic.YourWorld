@@ -11816,3 +11816,7 @@ body.is-playing .mx-vinyl-label { animation-play-state: running; }
    every click. Re-anchor it to the button. */
 .mx-track, .progress-style-opt { position: relative !important; }
 .mx-track::after, .progress-style-opt::after { inset: 0 !important; }
+
+/* Cover shape picker: square tiles, more per row. */
+.cover-shape-picker { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)) !important; }
+.cover-shape-opt { padding: 12px 6px 10px !important; }

@@ -283,6 +283,70 @@
 
   const shapeProfiles = SHAPE_DEFINITIONS.map(createProfile);
   const shapeNames = SHAPE_DEFINITIONS.map((definition) => definition.name);
+  // Random morphing keeps to the original Material shapes; the extra shapes
+  // below are for the fixed "cover shape" styles.
+  const MORPH_POOL = shapeProfiles.length;
+
+  // Extra shapes defined as polar radius functions r(theta), theta in canvas
+  // space (y down, -PI..PI), normalised so the largest radius is 160 like
+  // the Material profiles above.
+  function polarProfile(fn) {
+    const radii = new Float32Array(SAMPLE_COUNT);
+    let max = 0;
+    for (let i = 0; i < SAMPLE_COUNT; i++) {
+      const th = -Math.PI + (FULL_TURN * i) / SAMPLE_COUNT;
+      radii[i] = Math.max(0.05, fn(th));
+      if (radii[i] > max) max = radii[i];
+    }
+    for (let i = 0; i < SAMPLE_COUNT; i++) radii[i] *= PROFILE_RADIUS / max;
+    return radii;
+  }
+  function roundedPolygon(n, softness) {
+    return (th) => {
+      const seg = FULL_TURN / n;
+      const a = ((th + Math.PI / 2) % seg + seg) % seg - seg / 2;
+      const poly = Math.cos(Math.PI / n) / Math.cos(a);
+      return poly * (1 - softness) + softness;
+    };
+  }
+  function heartProfile() {
+    // Classic parametric heart, re-sampled as a radius per angle.
+    const pts = [];
+    for (let i = 0; i < 2000; i++) {
+      const t = (i / 2000) * FULL_TURN;
+      const x = 16 * Math.pow(Math.sin(t), 3);
+      const y = -(13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t));
+      pts.push([x, y]);
+    }
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    pts.forEach(([x, y]) => { minX = Math.min(minX, x); maxX = Math.max(maxX, x); minY = Math.min(minY, y); maxY = Math.max(maxY, y); });
+    const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+    const bins = new Float32Array(SAMPLE_COUNT);
+    pts.forEach(([x, y]) => {
+      const ang = Math.atan2(y - cy, x - cx);
+      const idx = Math.round(((ang + Math.PI) / FULL_TURN) * SAMPLE_COUNT) % SAMPLE_COUNT;
+      bins[idx] = Math.max(bins[idx], Math.hypot(x - cx, y - cy));
+    });
+    for (let i = 0; i < SAMPLE_COUNT; i++) {            // fill any empty bins
+      if (bins[i] > 0) continue;
+      let l = i, r = i;
+      while (bins[(l + SAMPLE_COUNT) % SAMPLE_COUNT] === 0 && i - l < SAMPLE_COUNT) l--;
+      while (bins[r % SAMPLE_COUNT] === 0 && r - i < SAMPLE_COUNT) r++;
+      bins[i] = (bins[(l + SAMPLE_COUNT) % SAMPLE_COUNT] + bins[r % SAMPLE_COUNT]) / 2;
+    }
+    return polarProfile((th) => bins[Math.round(((th + Math.PI) / FULL_TURN) * SAMPLE_COUNT) % SAMPLE_COUNT]);
+  }
+  const EXTRA_SHAPES = [
+    ['Circle', polarProfile(() => 1)],
+    ['Squircle', polarProfile((th) => 1 / Math.pow(Math.pow(Math.abs(Math.cos(th)), 4) + Math.pow(Math.abs(Math.sin(th)), 4), 0.25))],
+    ['Flower8', polarProfile((th) => 0.86 + 0.14 * Math.cos(8 * th))],
+    ['Sunny16', polarProfile((th) => 0.93 + 0.07 * Math.cos(16 * th))],
+    ['Star5', polarProfile((th) => 0.7 + 0.3 * Math.pow((Math.cos(5 * (th + Math.PI / 2)) + 1) / 2, 2))],
+    ['Gem6', polarProfile(roundedPolygon(6, 0.08))],
+    ['Heart', heartProfile()]
+  ];
+  EXTRA_SHAPES.forEach(([name, profile]) => { shapeProfiles.push(profile); shapeNames.push(name); });
+
   const shapeHistory = [0];
 
   function chooseNextShape(current) {
@@ -292,7 +356,7 @@
     }
 
     const recentlyShown = shapeHistory.slice(-2);
-    const candidates = shapeProfiles.map((_, index) => index).filter((index) => !recentlyShown.includes(index));
+    const candidates = shapeProfiles.slice(0, MORPH_POOL).map((_, index) => index).filter((index) => !recentlyShown.includes(index));
     const chosen = candidates.length ? candidates[Math.floor(Math.random() * candidates.length)] : 0;
 
     shapeHistory.push(chosen);
@@ -310,6 +374,7 @@
     count: () => shapeProfiles.length,
     next: chooseNextShape,
     names: shapeNames,
-    name: (index) => shapeNames[index]
+    name: (index) => shapeNames[index],
+    indexOf: (name) => shapeNames.indexOf(name)
   };
 })();
