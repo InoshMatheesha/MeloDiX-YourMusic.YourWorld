@@ -11,7 +11,7 @@
       mkMoodex = pkgs:
         pkgs.buildNpmPackage rec {
           pname = "moodex";
-          version = "1.1.0";
+          version = "1.1.1";
           src = self;
 
           npmDepsHash = "sha256-rF4yvXjCFcrILJ3G2TbnqxvjScRafgW9OPZtOpT8Akw=";

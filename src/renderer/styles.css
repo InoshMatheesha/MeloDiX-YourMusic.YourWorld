@@ -11346,3 +11346,87 @@ body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .sidebar-rai
    -------------------------------------------------------------------------- */
 
 .platform-switch-container[hidden] { display: none !important; }
+
+/* ===========================================================================
+   v1.1.1 - Rail active state
+   The active item used to be a flat grey tile with a square neon glow on the
+   24px icon box, which read as a stray box behind the icon. It is now a
+   Material-style pill that hugs the icon, tinted with the Moodex accent, plus
+   a short glowing marker on the rail edge. The label stays outside the pill.
+   =========================================================================== */
+body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .sidebar-nav .nav-item:not(#nav-discover) {
+  position: relative;
+  padding: 6px 2px !important;
+  gap: 4px !important;
+}
+
+body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .sidebar-nav .nav-item:not(#nav-discover),
+body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .sidebar-nav .nav-item:not(#nav-discover):hover,
+body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .sidebar-nav .nav-item.active:not(#nav-discover) {
+  background: transparent !important;
+}
+
+body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .sidebar-nav .nav-item:not(#nav-discover) .nav-indicator {
+  width: 54px !important;
+  height: 30px !important;
+  border-radius: 15px !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: none !important;
+  background: transparent !important;
+  transition: background-color 0.22s ease, box-shadow 0.22s ease, transform 0.22s cubic-bezier(0.2, 0, 0, 1);
+}
+
+body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .sidebar-nav .nav-item:not(#nav-discover):not(.active):hover .nav-indicator {
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 9%, transparent) !important;
+}
+
+body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .sidebar-nav .nav-item.active:not(#nav-discover) .nav-indicator {
+  background:
+    linear-gradient(135deg,
+      color-mix(in srgb, var(--moodex-blue, #2E9BFF) 34%, transparent),
+      color-mix(in srgb, var(--moodex-cyan, #5FD0FF) 16%, transparent)) !important;
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--moodex-cyan, #5FD0FF) 30%, transparent),
+    0 6px 16px -8px color-mix(in srgb, var(--moodex-blue, #2E9BFF) 80%, transparent) !important;
+  color: #fff !important;
+}
+
+body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .sidebar-nav .nav-item.active:not(#nav-discover) svg {
+  color: #fff !important;
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--moodex-cyan, #5FD0FF) 55%, transparent));
+}
+
+/* Edge marker: grows in from the rail's left edge. */
+body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .sidebar-nav .nav-item:not(#nav-discover)::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 21px;
+  width: 3px;
+  height: 0;
+  border-radius: 3px;
+  background: linear-gradient(180deg, var(--moodex-cyan, #5FD0FF), var(--moodex-blue, #2E9BFF));
+  box-shadow: 0 0 10px color-mix(in srgb, var(--moodex-blue, #2E9BFF) 70%, transparent);
+  transform: translateY(-50%);
+  transition: height 0.24s cubic-bezier(0.2, 0, 0, 1);
+  pointer-events: none;
+}
+
+body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .sidebar-nav .nav-item.active:not(#nav-discover)::before {
+  height: 22px;
+}
+
+body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .sidebar-nav .nav-item.active:not(#nav-discover) .nav-label {
+  color: var(--moodex-cyan, #5FD0FF) !important;
+}
+
+/* Live search: keep previous results visible but dimmed while the next
+   query loads, instead of flashing the loader on every keystroke. */
+#search-tracks-list.is-refreshing,
+.is-refreshing.track-list {
+  opacity: 0.55;
+  transition: opacity 0.15s ease;
+  pointer-events: none;
+}

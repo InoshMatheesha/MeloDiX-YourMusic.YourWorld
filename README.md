@@ -51,6 +51,27 @@ Moodex is an open-source, telemetry-free desktop music app and player for **Wind
 
 Built with **Electron**, **Vanilla JavaScript**, and **WebGL**, Moodex provides responsive UI interactions and hardware-accelerated audio visualization without runtime framework overhead. The project is distributed under the **MIT license** and enforces strict privacy: all configuration, cached streams, and playback history remain strictly on the local machine.
 
+## What's new in v1.1.1
+
+### Up next plays different songs, not the same song again
+Playing a song from search used to queue the whole result list, which for a
+search like "Nura Ananthe" meant the official audio, a lyric video, a slowed
+version and a reverb re-upload back to back. Picking a search result now starts
+a **song radio**: different tracks in the same style, taken from YouTube
+Music's per-song mix. Re-uploads, lyric videos and slowed / reverb / sped-up
+versions of the song - and of anything already queued - are filtered out, and
+the queue refills itself from the playing track as it runs low.
+
+### Results as you type
+Search no longer waits for Enter. Results update about 300 ms after you stop
+typing; stale requests are cancelled, and the current results stay on screen
+(dimmed) while the next ones load, so the list doesn't flash.
+
+### Cleaner sidebar highlight
+The selected sidebar item is now an accent-tinted pill behind the icon with a
+small marker on the rail edge, replacing the grey tile and square glow that
+looked like a stray box behind the Queue icon.
+
 ## What's new in v1.1.0
 
 > **Version reset.** Moodex restarts its version numbering at **1.1.0** with this

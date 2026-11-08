@@ -2222,6 +2222,154 @@ async function ytmusicSearch(query) {
   return [];
 }
 
+// ---------------------------------------------------------------------------
+// Song radio
+//
+// Clicking a search result used to make the whole result list the queue, so a
+// search for one song queued five uploads of that same song (lyric video,
+// slowed, reverb, re-upload...). The queue now comes from YouTube Music's own
+// per-song mix (the RDAMVM<id> playlist behind "Start radio"), which is a list
+// of *different* songs in the same style, and every remaining version of the
+// seed song - or of any song already in the list - is removed.
+// ---------------------------------------------------------------------------
+const SONG_RADIO_TTL_MS = 30 * 60 * 1000;
+const songRadioCache = new Map();
+
+// Words that mark a version of a song rather than a different song.
+const VERSION_NOISE_RE = /\b(official|music|video|audio|lyrics?|lyrical|visuali[sz]er|slowed|slow|reverb|reverbed|sped|speed|up|nightcore|8d|remix|remastered|remaster|cover|karaoke|instrumental|live|version|ver|hd|hq|4k|full|song|new|feat|ft|prod|by|x|and|the|sinhala|lofi|lo-fi|mashup|edit)\b/g;
+
+function songCoreTitle(title, artist) {
+  let t = String(title || '').toLowerCase();
+  t = t.replace(/[([{][^)\]}]*[)\]}]/g, ' ');           // drop (...) [...] {...}
+  const artists = String(artist || '').toLowerCase()
+    .split(/[,&;\/]|\bfeat\.?|\bft\.?|\bx\b/).map(s => s.trim()).filter(s => s.length > 1);
+  artists.forEach(a => { t = t.split(a).join(' '); });
+  t = t.replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(VERSION_NOISE_RE, ' ');
+  return t.replace(/\s+/g, ' ').trim();
+}
+
+function fullTitleNorm(title) {
+  return ' ' + String(title || '').toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim() + ' ';
+}
+
+// True when `cand` is just another upload of a song whose core title is `core`.
+function isVersionOf(core, cand) {
+  if (!core || core.length < 3 || !cand) return false;
+  const candCore = songCoreTitle(cand.title, cand.artist);
+  if (candCore && candCore === core) return true;
+  // Matching on whole words inside the full title catches titles like
+  // "<Sinhala script> | Nura Ananthe | slow & reverb".
+  if (fullTitleNorm(cand.title).includes(' ' + core + ' ')) return true;
+  return !!(candCore && candCore.length >= 4 && (' ' + core + ' ').includes(' ' + candCore + ' '));
+}
+
+function ytmNextRequest(videoId) {
+  const body = JSON.stringify({
+    context: { client: { clientName: 'WEB_REMIX', clientVersion: YTM_CLIENT_VERSION, hl: 'en', gl: 'US' } },
+    videoId,
+    playlistId: 'RDAMVM' + videoId,
+    isAudioOnly: true
+  });
+  return new Promise((resolve, reject) => {
+    const req = https.request({
+      hostname: 'music.youtube.com',
+      path: '/youtubei/v1/next?prettyPrint=false',
+      method: 'POST',
+      agent: keepAliveHttpsAgent,
+      family: 4,
+      timeout: 7000,
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(body),
+        'Origin': 'https://music.youtube.com',
+        'Referer': 'https://music.youtube.com/',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36'
+      }
+    }, (res) => {
+      if (res.statusCode < 200 || res.statusCode >= 300) { res.resume(); return reject(new Error('ytmusic next status ' + res.statusCode)); }
+      let raw = '';
+      res.setEncoding('utf8');
+      res.on('data', c => { raw += c; });
+      res.on('end', () => { try { resolve(JSON.parse(raw)); } catch (e) { reject(e); } });
+    });
+    req.on('timeout', () => { req.destroy(); reject(new Error('ytmusic next timeout')); });
+    req.on('error', reject);
+    req.end(body);
+  });
+}
+
+function parseYtmRadio(json) {
+  const out = [];
+  (function walk(o) {
+    if (!o || typeof o !== 'object') return;
+    const p = o.playlistPanelVideoRenderer;
+    if (p && p.videoId) {
+      const title = ((p.title && p.title.runs) || []).map(r => r.text).join('').trim();
+      // longBylineText is "Artist • Album • Year" (or "Artist • 1.2B views").
+      const runs = (p.longBylineText && p.longBylineText.runs) || [];
+      const artistRuns = [];
+      for (const r of runs) { if (/^\s*•\s*$/.test(r.text)) break; artistRuns.push(r.text); }
+      const lenText = (p.lengthText && p.lengthText.runs && p.lengthText.runs[0] && p.lengthText.runs[0].text) || '';
+      const duration = lenText.split(':').reduce((acc, n) => acc * 60 + (parseInt(n, 10) || 0), 0);
+      if (title) {
+        out.push({
+          id: p.videoId,
+          title,
+          artist: stripYoutubeTopic(artistRuns.join('').trim() || 'Unknown artist'),
+          duration: duration || 180,
+          thumbnail: ((p.thumbnail && p.thumbnail.thumbnails) || []).slice(-1).map(x => x.url)[0] || `https://i.ytimg.com/vi/${p.videoId}/hqdefault.jpg`,
+          url: `https://www.youtube.com/watch?v=${p.videoId}`,
+          platform: 'youtube'
+        });
+      }
+      return;
+    }
+    for (const k in o) walk(o[k]);
+  })(json);
+  return out;
+}
+
+async function getSongRadio({ id, title, artist, exclude = [], queued = [], limit = 25 }) {
+  let videoId = /^[A-Za-z0-9_-]{11}$/.test(String(id || '')) ? String(id) : '';
+  // SoundCloud / local seeds have no YouTube id: map them to the closest
+  // YouTube Music song first, then take its mix.
+  if (!videoId && (title || artist)) {
+    const hits = await ytmusicSearch(`${artist || ''} ${title || ''}`.trim()).catch(() => []);
+    if (hits && hits[0] && hits[0].id) videoId = hits[0].id;
+  }
+  if (!videoId) return [];
+
+  let items;
+  const cached = songRadioCache.get(videoId);
+  if (cached && Date.now() - cached.ts < SONG_RADIO_TTL_MS) {
+    items = cached.items;
+  } else {
+    items = parseYtmRadio(await ytmNextRequest(videoId));
+    songRadioCache.set(videoId, { ts: Date.now(), items });
+    if (songRadioCache.size > 40) songRadioCache.delete(songRadioCache.keys().next().value);
+  }
+
+  const excludeIds = new Set(exclude.map(String));
+  excludeIds.add(videoId);
+  if (id) excludeIds.add(String(id));
+  // Seed core titles: the seed itself plus anything the caller already queued,
+  // so a later refill cannot bring back a version of an earlier song.
+  const cores = [songCoreTitle(title, artist)]
+    .concat(queued.map(q => songCoreTitle(q && q.title, q && q.artist)))
+    .filter(c => c && c.length >= 3);
+  const result = [];
+  for (const t of items) {
+    if (!t || excludeIds.has(t.id)) continue;
+    if (cores.some(c => isVersionOf(c, t))) continue;
+    excludeIds.add(t.id);
+    const c = songCoreTitle(t.title, t.artist);
+    if (c && c.length >= 3) cores.push(c);
+    result.push(t);
+    if (result.length >= limit) break;
+  }
+  return result;
+}
+
 async function handleSearch(req, res, query, platform = 'ytmusic', limit = 12, offset = 0) {
   limit = Math.max(1, parseInt(limit, 10) || 12);
   offset = Math.max(0, parseInt(offset, 10) || 0);
@@ -5012,6 +5160,7 @@ const TOKEN_PROTECTED_ROUTES = new Set([
   '/api/translate',
   '/api/i18n-batch',
   '/api/vibe',
+  '/api/song-radio',
   '/api/search',
   '/api/artist',
   '/api/lyrics',
@@ -7838,6 +7987,28 @@ const server = http.createServer(async (req, res) => {
     req.on('end', () => {
       const payload = safeJsonParse(body, {});
       handleVibeRecommendations(req, res, payload);
+    });
+    return;
+  }
+
+  if (parsedUrl.pathname === '/api/song-radio' && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => { if (body.length <= MAX_BODY_BYTES) body += chunk; });
+    req.on('end', async () => {
+      const p = safeJsonParse(body, {}) || {};
+      try {
+        const tracks = await getSongRadio({
+          id: p.id, title: p.title, artist: p.artist,
+          exclude: Array.isArray(p.exclude) ? p.exclude.slice(0, 300) : [],
+          queued: Array.isArray(p.queued) ? p.queued.slice(0, 150) : [],
+          limit: Math.max(5, Math.min(parseInt(p.limit, 10) || 25, 50))
+        });
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true, tracks }));
+      } catch (e) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, tracks: [], error: e.message }));
+      }
     });
     return;
   }

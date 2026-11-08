@@ -4295,6 +4295,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     state.currentTrackContext = context;
     state.currentTrackIndexInContext = startIndex;
 
+    if (queueList && queueList !== state.queue && context !== 'search' && context !== 'queue') {
+      state.songRadioActive = false;
+      songRadioGen++;
+    }
     if (queueList) {
       state.queue = [...queueList];
       if (startIndex >= 0 && startIndex < state.queue.length && isSameTrack(state.queue[startIndex], track)) {
@@ -9244,8 +9248,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
-  async function performSearch(query) {
+  let searchAbort = null;
+  let lastSearchedQuery = '';
+  async function performSearch(query, opts = {}) {
     if (!query || !query.trim()) return;
+    const live = !!opts.live;
+    // Typing fires many searches; only the newest one matters, so cancel the
+    // previous request instead of letting it finish and be thrown away.
+    if (searchAbort) { try { searchAbort.abort(); } catch (_) { } }
+    searchAbort = new AbortController();
+    const searchSignal = searchAbort.signal;
+    lastSearchedQuery = query.trim().toLowerCase();
 
     const searchToken = (state.searchToken || 0) + 1;
     state.searchToken = searchToken;
@@ -9278,8 +9291,12 @@ document.addEventListener('DOMContentLoaded', async () => {
       fetchAlbumsForSearch(trimmedQuery, searchToken);
     }
 
+    // While typing, keep the previous results on screen (dimmed) instead of
+    // flashing the loader on every keystroke.
+    const hasRows = !!(el.searchTracksList && el.searchTracksList.querySelector('.track-item, .track-row, [data-index]'));
     if (el.searchTracksList) {
-      renderM3SearchLoader(el.searchTracksList);
+      if (live && hasRows) el.searchTracksList.classList.add('is-refreshing');
+      else renderM3SearchLoader(el.searchTracksList);
     }
 
     try {
@@ -9290,9 +9307,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         return;
       }
       const searchUrl = `http://127.0.0.1:${state.serverPort}/api/search?q=${encodeURIComponent(query)}&platform=${state.platform}&limit=12&offset=0`;
-      const res = await fetch(searchUrl);
+      const res = await fetch(searchUrl, { signal: searchSignal });
       const data = await res.json();
       if (state.searchToken !== searchToken) return;
+      if (el.searchTracksList) el.searchTracksList.classList.remove('is-refreshing');
 
       if (!data.success || !data.tracks) {
         if (state.platform === 'ytmusic') showToast('YouTube Music is unavailable');
@@ -9315,7 +9333,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         fetchArtistCardForSearch(trimmedQuery, searchToken, data.tracks);
       }
     } catch (err) {
-      if (state.searchToken !== searchToken) return;
+      if (state.searchToken !== searchToken || (err && err.name === 'AbortError')) return;
+      if (el.searchTracksList) el.searchTracksList.classList.remove('is-refreshing');
       console.error('Search error:', err);
       const isOff = !navigator.onLine;
       if (el.searchTracksList) {
@@ -10220,9 +10239,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         return;
       }
       if (context === 'search') {
-        state.isRadioQueue = false;
-        state.queue = [...tracks];
-        playTrack(track, tracks, idx, 'search');
+        // A search result list is mostly other uploads of the same song, so it
+        // makes a poor queue. Play the pick now and build "Up next" from a
+        // song radio of different tracks in the same style.
+        startSongRadio(track);
         row.blur();
         return;
       }
@@ -12647,6 +12667,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   function restoreDiscoverHomeState(forceHome = false) {
+    lastSearchedQuery = '';
     const hasSearchQuery = !forceHome && el.searchInput && el.searchInput.value.trim().length > 0;
     const isSearchActive = hasSearchQuery && el.searchResultsContainer && !el.searchResultsContainer.classList.contains('hidden');
 
@@ -13711,6 +13732,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   })();
 
+  const LIVE_SEARCH_DELAY_MS = 300;
+  let liveSearchTimer = 0;
   if (el.searchInput) {
     el.searchInput.addEventListener('input', (e) => {
       const val = e.target.value;
@@ -13722,16 +13745,31 @@ document.addEventListener('DOMContentLoaded', async () => {
       // Drives the Ctrl+K hint out of the way once there is text to read.
       const box = e.target.closest('.search-box');
       if (box) box.classList.toggle('has-value', !!val);
+      clearTimeout(liveSearchTimer);
       if (!val.trim()) {
+        if (searchAbort) { try { searchAbort.abort(); } catch (_) { } }
+        state.searchToken = (state.searchToken || 0) + 1;
+        lastSearchedQuery = '';
         restoreDiscoverHomeState(true);
+        return;
       }
+      // Real-time results: search once typing pauses.
+      const q = val.trim();
+      if (q.length < 2) return;
+      liveSearchTimer = setTimeout(() => {
+        if (q.toLowerCase() === lastSearchedQuery) return;
+        if (el.searchInput.value.trim() !== q) return;
+        performSearch(q, { live: true });
+      }, LIVE_SEARCH_DELAY_MS);
     });
 
     el.searchInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
+        clearTimeout(liveSearchTimer);
         const val = el.searchInput.value.trim();
-        if (val) performSearch(val);
+        if (val && val.toLowerCase() !== lastSearchedQuery) performSearch(val);
       } else if (e.key === 'Escape') {
+        clearTimeout(liveSearchTimer);
         restoreDiscoverHomeState(true);
       }
     });
@@ -18075,7 +18113,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   (function initUpdateUI() {
     const api = window.electronAPI;
     const $ = (id) => document.getElementById(id);
-    let currentAppVersion = '1.1.0';
+    let currentAppVersion = '1.1.1';
     if (api && api.getAppVersion) {
       api.getAppVersion().then((v) => {
         if (v) {
@@ -20802,7 +20840,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (typeof showToast === 'function') showToast('No playlists to export', 'error');
       return;
     }
-    let appVer = '1.1.0';
+    let appVer = '1.1.1';
     try {
       if (window.electronAPI && window.electronAPI.getAppVersion) {
         const v = await window.electronAPI.getAppVersion();
@@ -22707,12 +22745,75 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
+  // --- Song radio ---------------------------------------------------------
+  // Up next for a track picked from search: different songs in the same
+  // style (YouTube Music's per-song mix), never re-uploads, lyric videos or
+  // slowed/reverb versions of the song itself. Refills itself as it runs low.
+  let songRadioGen = 0;
+
+  async function fetchSongRadio(seed) {
+    const port = state.serverPort || 38472;
+    const queued = state.queue.slice(-150);
+    const res = await fetch('http://127.0.0.1:' + port + '/api/song-radio', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: seed.platform === 'soundcloud' || seed.platform === 'local' ? '' : (seed.id || ''),
+        title: seed.title || '',
+        artist: seed.artist || '',
+        exclude: queued.map(t => t && t.id).filter(Boolean).map(String),
+        queued: queued.map(t => ({ title: (t && t.title) || '', artist: (t && t.artist) || '' })),
+        limit: 25
+      })
+    });
+    const data = await res.json().catch(() => null);
+    const list = (data && Array.isArray(data.tracks)) ? data.tracks : [];
+    return list.filter(t => t && t.title && (t.id || t.url) && !isTrackBlocked(t) && !isArtistBlocked(t.artist));
+  }
+
+  function appendToQueue(fresh) {
+    if (!fresh.length) return;
+    const startIdx = state.queue.length;
+    state.queue.push(...fresh);
+    if (el.queueCount) el.queueCount.textContent = String(state.queue.length);
+    if (typeof updateQueueBadge === 'function') updateQueueBadge();
+    if (state.currentView === 'queue' && el.queueTracksList) {
+      el.queueTracksList.querySelector('.empty-hint')?.remove();
+      fresh.forEach((tr, i) => {
+        const qIdx = startIdx + i;
+        el.queueTracksList.appendChild(createTrackRow(tr, qIdx, state.currentTrack ? getTrackCanonicalId(state.currentTrack) : '', 'queue', state.queue, el.queueTracksList));
+      });
+    }
+  }
+
+  function startSongRadio(track) {
+    const gen = ++songRadioGen;
+    state.myWaveActive = false;
+    state.isRadioQueue = true;
+    state.songRadioActive = true;
+    playTrack(track, [track], 0, 'search');
+    fetchSongRadio(track).then(fresh => {
+      if (gen !== songRadioGen || !state.songRadioActive) return;
+      appendToQueue(fresh);
+      if (fresh[0] && typeof warmStreams === 'function') warmStreams(fresh.slice(0, 1), 1);
+    }).catch(() => { });
+  }
+
   async function ensureInfiniteWaveQueue(force = false) {
     if (!state.isRadioQueue && !force) return false;
     if (state._waveReplenishBusy) return false;
     const remaining = state.queue.length - 1 - state.queueIndex;
     if (!force && remaining > 3) return false;
     state._waveReplenishBusy = true;
+    if (state.songRadioActive && state.currentTrack) {
+      try {
+        const gen = songRadioGen;
+        const fresh = await fetchSongRadio(state.currentTrack);
+        if (gen === songRadioGen && state.songRadioActive && fresh.length) { appendToQueue(fresh); return true; }
+      } catch (_) { } finally { state._waveReplenishBusy = false; }
+      if (state.queueIndex + 1 < state.queue.length) return false;
+      state._waveReplenishBusy = true; // mix came back empty: fall through to taste-based refill
+    }
     try {
       const port = state.serverPort || 38472;
       const taste = typeof computeTasteProfile === 'function' ? computeTasteProfile() : { seeds: [], topArtists: [] };
