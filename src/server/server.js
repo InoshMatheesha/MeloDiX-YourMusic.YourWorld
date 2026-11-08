@@ -16,8 +16,46 @@ const { StringDecoder } = require("string_decoder");
 const dns = require('dns');
 const net = require('net');
 
+// ---------------------------------------------------------------------------
+// Force IPv4 for every outbound connection this process makes.
+//
+// Google binds a googlevideo stream URL to the IP address that requested it.
+// The audio proxy already pins itself to IPv4 (`family: 4`), and yt-dlp is run
+// with --force-ipv4, but plain `fetch()` (undici) does Happy Eyeballs and will
+// happily resolve over IPv6 on a dual-stack machine. When extraction went out
+// over IPv6 and playback came back over IPv4, Google answered the stream
+// request with 403 - which the proxy then piped straight to <audio>, so the
+// renderer reported "Format error" and the UI said
+// "Could not play this track, trying next...".
+//
+// Pinning the whole process to IPv4 keeps extraction and playback on the same
+// egress address, which is the thing the URL is actually bound to.
+try { dns.setDefaultResultOrder('ipv4first'); } catch (e) {}
+
 const PORT = 38472;
-const { DATA_DIR, CACHE_DIR, CUSTOM_LYRICS_DIR, LYRICS_DIR, THUMBNAILS_DIR, METADATA_PATH, LIBRARY_DIR, LIBRARY_PATH, ytDlpCommand, resolveDownloadDir, resolveBinary } = require('../shared/platform');
+const { DATA_DIR, CACHE_DIR, CUSTOM_LYRICS_DIR, LYRICS_DIR, THUMBNAILS_DIR, METADATA_PATH, LIBRARY_DIR, LIBRARY_PATH, ytDlpCommand, resolveDownloadDir, resolveBinary, readStartupConfig, writeStartupConfig } = require('../shared/platform');
+
+// ---------------------------------------------------------------------------
+// Auto-caching
+//
+// Every played track used to be written to disk 45 seconds in, with no way to
+// turn it off - a few hours of listening quietly consumed gigabytes. Playback
+// streams fine without it, so this now defaults to OFF and is opt-in.
+// Explicit downloads (the download button) are unaffected.
+// ---------------------------------------------------------------------------
+let autoCacheEnabled = readStartupConfig().autoCachePlayedTracks === true;
+
+function setAutoCacheEnabled(on) {
+  autoCacheEnabled = !!on;
+  writeStartupConfig({ autoCachePlayedTracks: autoCacheEnabled });
+  return autoCacheEnabled;
+}
+
+// Wraps the deferred disk-cache so the three call sites share one policy.
+function scheduleAutoCache(trackUrl, cleanId, platform, meta) {
+  if (!autoCacheEnabled || !cleanId) return;
+  setTimeout(() => downloadTrackToDisk(trackUrl, cleanId, platform, meta), 45000);
+}
 const I18N_DIR = path.join(DATA_DIR, 'i18n');
 try { fs.mkdirSync(I18N_DIR, { recursive: true }); } catch (_) {}
 
@@ -590,11 +628,61 @@ async function fetchDirectYoutubeStreamServer(videoId, quality = 'medium') {
     req.end();
   });
 
+  let candidate = null;
   try {
-    return await Promise.any(clients.map(queryClient));
+    candidate = await Promise.any(clients.map(queryClient));
   } catch (_) {
     return null;
   }
+
+  // The InnerTube clients above hand back a URL without deciphering YouTube's
+  // `n` parameter, so a good fraction of them are rejected with 403 the moment
+  // anything actually reads from them. The audio proxy used to pipe that 403
+  // body straight into <audio>, which surfaced as a bare "Format error" and
+  // the "Could not play this track" toast.
+  //
+  // Probe the URL here instead. Returning null on a bad one makes every caller
+  // fall through to the yt-dlp path, which does decipher the signature.
+  if (candidate && !(await isPlayableStreamUrl(candidate))) return null;
+  return candidate;
+}
+
+// Cheap liveness check: ask for the first couple of KB and confirm we get a
+// success status with an audio/video body rather than an error page.
+async function isPlayableStreamUrl(streamUrl) {
+  if (!streamUrl || typeof streamUrl !== 'string') return false;
+  if (streamUrl.includes('.m3u8')) return true; // HLS is validated by the player
+  let parsed;
+  try { parsed = new URL(streamUrl); } catch (e) { return false; }
+
+  const headers = {
+    Range: 'bytes=0-1',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/131.0.0.0 Safari/537.36'
+  };
+  // Match the UA the audio proxy will use, or the probe can pass where real
+  // playback would fail.
+  const cParam = parsed.searchParams.get('c') || '';
+  if (cParam === 'IOS') headers['User-Agent'] = 'com.google.ios.youtube/19.45.4 (iPhone16,2; U; CPU iOS 18_1_0 like Mac OS X;)';
+  else if (cParam === 'ANDROID_VR') headers['User-Agent'] = 'com.google.android.apps.youtube.vr.oculus/1.60.19 (Linux; U; Android 14; eureka-user Build/SQ3A.220605.009.A1) gzip';
+  else if (cParam.startsWith('ANDROID')) headers['User-Agent'] = 'com.google.android.youtube/19.44.38 (Linux; U; Android 14) gzip';
+
+  return await new Promise((resolve) => {
+    let settled = false;
+    const done = (v) => { if (!settled) { settled = true; resolve(v); } };
+    try {
+      const probe = https.request(streamUrl, { method: 'GET', family: 4, headers, timeout: 4000 }, (r) => {
+        const ct = String(r.headers['content-type'] || '');
+        const ok = r.statusCode >= 200 && r.statusCode < 300 && /^(audio|video)\//i.test(ct);
+        r.destroy();
+        done(ok);
+      });
+      probe.on('timeout', () => { probe.destroy(); done(false); });
+      probe.on('error', () => done(false));
+      probe.end();
+    } catch (e) {
+      done(false);
+    }
+  });
 }
 
 async function resolveScTranscodingServer(trackObj, cid) {
@@ -1835,7 +1923,7 @@ async function prefetchTrack(trackUrl, trackId, platform) {
         isLocal: false,
         streamUrl,
         isHls,
-        proxyUrl: `http://127.0.0.1:${PORT}/api/audio-proxy?url=${encodeURIComponent(streamUrl)}`
+        proxyUrl: `http://127.0.0.1:${PORT}/api/audio-proxy?url=${encodeURIComponent(streamUrl)}${cleanId ? '&vid=' + encodeURIComponent(cleanId) : ''}`
       };
       cacheSet(streamUrlCache, cacheKey, { timestamp: Date.now(), data });
       if (cleanId) cacheSet(streamUrlCache, cleanId + '_' + quality, { timestamp: Date.now(), data });
@@ -2454,7 +2542,7 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
     const cached = streamUrlCache.get(cacheKey) || (cleanId ? streamUrlCache.get(cleanId + '_' + quality) : null);
     if (cached && (Date.now() - cached.timestamp < 7200000)) {
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      if (cleanId) setTimeout(() => downloadTrackToDisk(trackUrl, cleanId, platform, meta), 45000);
+      scheduleAutoCache(trackUrl, cleanId, platform, meta);
       return res.end(JSON.stringify(cached.data));
     }
   }
@@ -2463,7 +2551,7 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
     const inflightUrl = await streamInfoInflight.get(cacheKey).catch(() => null);
     if (inflightUrl) {
       const isHls = inflightUrl.includes('.m3u8');
-      const proxyUrl = `http://127.0.0.1:${PORT}/api/audio-proxy?url=${encodeURIComponent(inflightUrl)}`;
+      const proxyUrl = `http://127.0.0.1:${PORT}/api/audio-proxy?url=${encodeURIComponent(inflightUrl)}${cleanId ? '&vid=' + encodeURIComponent(cleanId) : ''}`;
       const data = { success: true, isLocal: false, streamUrl: inflightUrl, isHls, proxyUrl };
       res.writeHead(200, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify(data));
@@ -2519,7 +2607,7 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
       if (resolvedId) data.resolvedId = resolvedId;
       if (cacheKey) streamUrlCache.set(cacheKey, { timestamp: Date.now(), data });
       if (finalId && finalId !== cacheKey) streamUrlCache.set(finalId, { timestamp: Date.now(), data });
-      if (finalId) setTimeout(() => downloadTrackToDisk(trackUrl || `https://www.youtube.com/watch?v=${finalId}`, finalId, 'youtube', meta), 45000);
+      scheduleAutoCache(trackUrl || `https://www.youtube.com/watch?v=${finalId}`, finalId, 'youtube', meta);
       res.writeHead(200, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify(data));
     };
@@ -2843,7 +2931,10 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
   }
 
   const isHls = streamUrl.includes('.m3u8');
-  const proxyUrl = `http://127.0.0.1:${PORT}/api/audio-proxy?url=${encodeURIComponent(streamUrl)}`;
+  // Carry the video id so the proxy can re-resolve this stream itself if the
+  // link has gone stale by the time playback actually starts.
+  const vidForProxy = cleanId || extractYtIdFromAny(trackUrl || '') || '';
+  const proxyUrl = `http://127.0.0.1:${PORT}/api/audio-proxy?url=${encodeURIComponent(streamUrl)}${vidForProxy ? '&vid=' + encodeURIComponent(vidForProxy) : ''}`;
   const data = {
     success: true,
     isLocal: false,
@@ -2854,7 +2945,7 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
 
   if (cacheKey) streamUrlCache.set(cacheKey, { timestamp: Date.now(), data });
   if (cleanId && cleanId !== cacheKey) streamUrlCache.set(cleanId, { timestamp: Date.now(), data });
-  if (cleanId) setTimeout(() => downloadTrackToDisk(trackUrl, cleanId, platform, meta), 45000);
+  scheduleAutoCache(trackUrl, cleanId, platform, meta);
 
   res.writeHead(200, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify(data));
@@ -3355,7 +3446,41 @@ async function handleDownloadedTrack(req, res, name) {
   }
 }
 
-async function handleAudioProxy(req, res, targetUrl) {
+// Ask yt-dlp (pinned to IPv4, like the proxy itself) for a fresh stream URL.
+// Used when a cached googlevideo link has gone stale underneath us.
+async function reresolveGoogleVideoUrl(videoId, staleUrl) {
+  let id = videoId || '';
+  if (!id) {
+    // googlevideo links don't always carry the video id, but the cache does.
+    for (const [, entry] of streamUrlCache) {
+      const u = entry && entry.data && entry.data.streamUrl;
+      if (u && u === staleUrl) {
+        id = extractYtIdFromAny(entry.data.sourceUrl || '') || '';
+        if (id) break;
+      }
+    }
+  }
+  if (!id) return null;
+
+  // Drop every cached copy of the dead URL so the next request re-resolves too.
+  for (const [key, entry] of [...streamUrlCache]) {
+    const u = entry && entry.data && entry.data.streamUrl;
+    if (u === staleUrl || key === id || key.startsWith(id + '_')) streamUrlCache.delete(key);
+  }
+
+  try {
+    const out = await executeYtDlp(
+      ['-f', 'bestaudio[ext=m4a]/bestaudio/best', '--get-url', '--no-warnings', `https://www.youtube.com/watch?v=${id}`],
+      20000
+    );
+    const fresh = String(out || '').trim().split('\n').map(s => s.trim()).filter(s => s.startsWith('http'))[0];
+    return fresh || null;
+  } catch (e) {
+    return null;
+  }
+}
+
+async function handleAudioProxy(req, res, targetUrl, retried = false) {
   if (!targetUrl) {
     res.writeHead(400);
     return res.end('Missing url');
@@ -3413,11 +3538,39 @@ async function handleAudioProxy(req, res, targetUrl) {
       method: req.method,
       family: 4,
       headers: forward
-    }, (proxyRes) => {
+    }, async (proxyRes) => {
       if (res.writableEnded) {
         proxyRes.destroy();
         return;
       }
+
+      // A stale or IP-mismatched googlevideo URL answers 403/410 with a short
+      // text body. Piping that straight through meant <audio> received
+      // non-audio bytes and reported a bare "Format error", which told the
+      // user nothing and burned one of the renderer's retries. Re-resolve the
+      // stream once and serve that instead, so playback heals itself.
+      const isStale = proxyRes.statusCode === 403 || proxyRes.statusCode === 410 || proxyRes.statusCode === 404;
+      if (isStale && !retried && parsed.hostname.endsWith('googlevideo.com')) {
+        proxyRes.resume(); // drain the error body
+        // `vid` is attached when the proxy URL is built, precisely so a stale
+        // link can be re-resolved without having to guess the video.
+        let reqUrl = null;
+        try { reqUrl = new URL(req.url, 'http://127.0.0.1'); } catch (e) {}
+        const videoId = (reqUrl && reqUrl.searchParams.get('vid')) || parsed.searchParams.get('docid') || '';
+        const fresh = await reresolveGoogleVideoUrl(videoId, targetUrl);
+        if (fresh && fresh !== targetUrl) {
+          logger.log('INFO', `audio-proxy: ${proxyRes.statusCode} on stale URL, re-resolved ${videoId || '(unknown id)'}`);
+          return handleAudioProxy(req, res, fresh, true);
+        }
+        if (!res.headersSent) {
+          // Fail as a transport error rather than as unplayable audio, so the
+          // renderer can tell "the link died" from "this file is corrupt".
+          res.writeHead(502, { 'Content-Type': 'text/plain', 'Cache-Control': 'no-store' });
+          res.end('Upstream rejected the stream URL (' + proxyRes.statusCode + ')');
+        }
+        return;
+      }
+
       res.writeHead(proxyRes.statusCode, proxyRes.headers);
       proxyRes.on('error', () => { try { res.destroy(); } catch (e) {} });
       proxyRes.pipe(res);
@@ -3437,7 +3590,14 @@ async function handleAudioProxy(req, res, targetUrl) {
     });
 
     req.on('error', () => { try { proxyReq.destroy(); } catch (e) {} });
-    req.pipe(proxyReq);
+    // Audio range requests are GET/HEAD and carry no body. Only pipe when there
+    // actually is one - on the self-healing retry the original request stream
+    // has already been consumed, and re-piping it would throw.
+    if (req.method === 'GET' || req.method === 'HEAD' || req.readableEnded) {
+      proxyReq.end();
+    } else {
+      req.pipe(proxyReq);
+    }
   } catch (e) {
     if (!res.headersSent) {
       res.writeHead(500);
@@ -7885,6 +8045,25 @@ const server = http.createServer(async (req, res) => {
     }
     res.writeHead(404);
     return res.end('Thumbnail not cached');
+  }
+
+  // Read or set whether played tracks are cached to disk. GET returns the
+  // current value; POST {enabled:bool} changes it and persists the choice.
+  if (parsedUrl.pathname === '/api/auto-cache') {
+    if (req.method === 'POST') {
+      let body = '';
+      req.on('data', c => { body += c; if (body.length > 4096) { req.destroy(); } });
+      req.on('end', () => {
+        let enabled = false;
+        try { enabled = !!JSON.parse(body || '{}').enabled; } catch (e) {}
+        setAutoCacheEnabled(enabled);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true, enabled: autoCacheEnabled }));
+      });
+      return;
+    }
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({ success: true, enabled: autoCacheEnabled }));
   }
 
   if (parsedUrl.pathname === '/api/offline-library') {
