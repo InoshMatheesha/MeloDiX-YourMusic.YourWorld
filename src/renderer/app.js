@@ -2870,8 +2870,142 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
+  // Visualizer styles behind the playbar. 'bars' is the original, 'liquid'
+  // the old "connected" toggle; the rest are new. Every non-bars style shows
+  // behind the playbar the way liquid always did.
+  const VIZ_STYLES = ['bars', 'liquid', 'mirror', 'peaks', 'led', 'neon', 'aurora', 'orbit'];
+  let currentVizStyle = (() => {
+    try {
+      const v = localStorage.getItem('moodex_viz_style');
+      if (VIZ_STYLES.includes(v)) return v;
+      return localStorage.getItem('moodex_viz_connected') === '1' ? 'liquid' : 'bars';
+    } catch (_) { return 'bars'; }
+  })();
   function isVizConnectedMode() {
-    return localStorage.getItem('moodex_viz_connected') === '1';
+    return currentVizStyle !== 'bars';
+  }
+
+  function vizSmoothPath(ctx, pts) {
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for (let i = 0; i < pts.length - 1; i++) {
+      const p0 = pts[Math.max(0, i - 1)], p1 = pts[i], p2 = pts[i + 1], p3 = pts[Math.min(pts.length - 1, i + 2)];
+      const t = 0.18;
+      ctx.bezierCurveTo(p1.x + (p2.x - p0.x) * t, p1.y + (p2.y - p0.y) * t, p2.x - (p3.x - p1.x) * t, p2.y - (p3.y - p1.y) * t, p2.x, p2.y);
+    }
+  }
+
+  // Draws one frame of the playbar visualizer. `heights` is the symmetric
+  // spectrum (pixels, 0..h) the bars style has always used.
+  function drawVizStyle(ctx, w, h, heights, color, style) {
+    const n = heights.length;
+    if (!n || w <= 0 || h <= 0) return;
+    ctx.fillStyle = color;
+    if (style === 'liquid') { drawConnectedLiquidWave(ctx, w, h, heights); return; }
+
+    const gap = 2;
+    const barW = Math.max(2, (w - gap * (n - 1)) / n);
+    const startX = Math.max(0, (w - (n * barW + gap * (n - 1))) / 2);
+    const clampH = v => Math.max(2, Math.min(h - 2, v));
+
+    if (style === 'mirror') {
+      const mid = h / 2;
+      for (let i = 0; i < n; i++) {
+        const bh = clampH(heights[i]) * 0.9;
+        ctx.beginPath(); ctx.roundRect(startX + i * (barW + gap), mid - bh / 2, barW, bh, Math.min(barW / 2, 3)); ctx.fill();
+      }
+      return;
+    }
+
+    if (style === 'peaks') {
+      const c = ctx.canvas;
+      if (!c._vizPeaks || c._vizPeaks.length !== n) c._vizPeaks = new Float32Array(n);
+      const pk = c._vizPeaks;
+      for (let i = 0; i < n; i++) {
+        const bh = clampH(heights[i]);
+        const x = startX + i * (barW + gap);
+        ctx.globalAlpha = 0.55;
+        ctx.beginPath(); ctx.roundRect(x, h - bh, barW, bh, 2); ctx.fill();
+        pk[i] = Math.max(bh, pk[i] - 0.6);           // cap falls slowly
+        ctx.globalAlpha = 1;
+        ctx.fillRect(x, Math.max(0, h - pk[i] - 3), barW, 2);
+      }
+      ctx.globalAlpha = 1;
+      return;
+    }
+
+    if (style === 'led') {
+      const cell = 3, cgap = 1.5;
+      for (let i = 0; i < n; i++) {
+        const lit = Math.max(1, Math.round(clampH(heights[i]) / (cell + cgap)));
+        const x = startX + i * (barW + gap);
+        for (let k = 0; k < lit; k++) {
+          ctx.globalAlpha = k === lit - 1 ? 1 : 0.35 + 0.5 * (k / lit);
+          ctx.fillRect(x, h - (k + 1) * (cell + cgap), barW, cell);
+        }
+      }
+      ctx.globalAlpha = 1;
+      return;
+    }
+
+    // Smooth outline through the spectrum, used by neon and aurora.
+    const pts = [];
+    const step = w / (n + 1);
+    for (let i = 0; i < n; i++) pts.push({ x: (i + 1) * step, y: h - clampH(heights[i]) });
+    pts.unshift({ x: 0, y: h - 1 }); pts.push({ x: w, y: h - 1 });
+
+    if (style === 'neon') {
+      ctx.save();
+      ctx.beginPath(); vizSmoothPath(ctx, pts); ctx.lineTo(w, h); ctx.lineTo(0, h); ctx.closePath();
+      ctx.globalAlpha = 0.14; ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.beginPath(); vizSmoothPath(ctx, pts);
+      ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.lineJoin = 'round';
+      ctx.shadowColor = color; ctx.shadowBlur = 10;
+      ctx.stroke();
+      ctx.restore();
+      return;
+    }
+
+    if (style === 'aurora') {
+      // Two soft gradient layers drifting against each other.
+      const t = performance.now() / 1000;
+      const layer = (scale, shift, c0, alpha) => {
+        const lp = pts.map((p, i) => ({ x: p.x, y: h - (h - p.y) * scale * (0.85 + 0.15 * Math.sin(t * 1.6 + i * 0.5 + shift)) }));
+        ctx.save();
+        ctx.globalAlpha = alpha * 0.55; ctx.fillStyle = c0;
+        ctx.beginPath(); vizSmoothPath(ctx, lp); ctx.lineTo(w, h); ctx.lineTo(0, h); ctx.closePath(); ctx.fill();
+        // Bright glowing crest on top of each layer.
+        ctx.globalAlpha = alpha; ctx.strokeStyle = c0; ctx.lineWidth = 1.6;
+        ctx.shadowColor = c0; ctx.shadowBlur = 10;
+        ctx.beginPath(); vizSmoothPath(ctx, lp); ctx.stroke();
+        ctx.restore();
+      };
+      layer(1, 0, color, 0.75);
+      layer(0.7, 2.1, '#5FD0FF', 0.55);
+      layer(0.45, 4.2, '#B07CFF', 0.45);
+      return;
+    }
+
+    if (style === 'orbit') {
+      // Glowing dots riding a line, sized by energy - a light, airy look.
+      ctx.save();
+      ctx.shadowColor = color; ctx.shadowBlur = 8;
+      for (let i = 0; i < n; i += 2) {
+        const e = clampH(heights[i]) / h;
+        const x = startX + i * (barW + gap) + barW / 2;
+        const y = h / 2 + Math.sin(performance.now() / 600 + i * 0.35) * (h * 0.18) * e;
+        ctx.globalAlpha = 0.35 + 0.65 * e;
+        ctx.beginPath(); ctx.arc(x, y, 1.2 + e * 3.2, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.restore();
+      return;
+    }
+
+    // 'bars' (default)
+    for (let i = 0; i < n; i++) {
+      const bh = clampH(heights[i]);
+      ctx.beginPath(); ctx.roundRect(startX + i * (barW + gap), h - bh, barW, bh, 3); ctx.fill();
+    }
   }
   let liquidWavePhase = 0;
   const liquidSpringNodes = new Float32Array(36);
@@ -3239,25 +3373,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                   symHeights[halfCount + i] = hVal;
                 }
 
-                const isConn = isVizConnectedMode();
-                const color = cachedPrimaryColor || '#ffffff';
-                barBgCtx.fillStyle = color;
-                if (isConn) {
-                  drawConnectedLiquidWave(barBgCtx, bw, bh, symHeights);
-                } else {
-                  const gap = 2;
-                  const totalGap = gap * (symCount - 1);
-                  const barW = Math.max(2, (bw - totalGap) / symCount);
-                  const actualTotal = symCount * barW + totalGap;
-                  const startX = Math.max(0, (bw - actualTotal) / 2);
-                  for (let i = 0; i < symCount; i++) {
-                    const barH = Math.max(2, Math.min(bh - 2, symHeights[i]));
-                    const x = startX + i * (barW + gap);
-                    barBgCtx.beginPath();
-                    barBgCtx.roundRect(x, bh - barH, barW, barH, 3);
-                    barBgCtx.fill();
-                  }
-                }
+                drawVizStyle(barBgCtx, bw, bh, symHeights, cachedPrimaryColor || '#ffffff', currentVizStyle);
               } else if (barBgSmoothedHeights) {
                 let anyActive = false;
                 const halfCount = 26;
@@ -3273,25 +3389,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                   symHeights[halfCount - 1 - i] = hVal;
                   symHeights[halfCount + i] = hVal;
                 }
-                const isConn = isVizConnectedMode();
-                const color = cachedPrimaryColor || '#ffffff';
-                barBgCtx.fillStyle = color;
-                if (isConn) {
-                  drawConnectedLiquidWave(barBgCtx, bw, bh, symHeights);
-                } else {
-                  const gap = 2;
-                  const totalGap = gap * (symCount - 1);
-                  const barW = Math.max(2, (bw - totalGap) / symCount);
-                  const actualTotal = symCount * barW + totalGap;
-                  const startX = Math.max(0, (bw - actualTotal) / 2);
-                  for (let i = 0; i < symCount; i++) {
-                    const barH = Math.max(2, Math.min(bh - 2, symHeights[i]));
-                    const x = startX + i * (barW + gap);
-                    barBgCtx.beginPath();
-                    barBgCtx.roundRect(x, bh - barH, barW, barH, 3);
-                    barBgCtx.fill();
-                  }
-                }
+                drawVizStyle(barBgCtx, bw, bh, symHeights, cachedPrimaryColor || '#ffffff', currentVizStyle);
                 if (!anyActive) {
                   barBgSmoothedHeights = null;
                 }
@@ -16321,10 +16419,67 @@ document.addEventListener('DOMContentLoaded', async () => {
     sliderBarVizOpacity.addEventListener('change', onOpInput);
   }
 
+  // Visualizer style picker (Settings > Tracks). Previews animate with a
+  // synthetic spectrum only while the picker is on screen.
+  (function initVizStylePicker() {
+    const picker = document.getElementById('viz-style-picker');
+    if (!picker) return;
+    let raf = 0;
+    const W = 132, H = 30, N = 22;
+    function fakeSpectrum(t, seed) {
+      const out = new Float32Array(N);
+      for (let i = 0; i < N; i++) {
+        const c = Math.abs(i - (N - 1) / 2) / (N / 2);
+        const beat = 0.55 + 0.45 * Math.sin(t * 4.2 + seed);
+        const v = (1 - c * 0.75) * (0.45 + 0.55 * Math.abs(Math.sin(t * 2.3 + i * 0.7 + seed))) * beat;
+        out[i] = 3 + v * (H - 6);
+      }
+      return out;
+    }
+    function frame() {
+      raf = 0;
+      if (!picker.isConnected || picker.offsetParent === null) return;   // hidden: stop
+      if (!cachedPrimaryColor) refreshCachedThemeColors();
+      const t = performance.now() / 1000;
+      const dpr = window.devicePixelRatio || 1;
+      picker.querySelectorAll('.progress-style-opt').forEach((btn, idx) => {
+        const cv = btn.querySelector('canvas');
+        const sel = btn.dataset.viz === currentVizStyle;
+        btn.classList.toggle('active', sel);
+        btn.setAttribute('aria-checked', sel ? 'true' : 'false');
+        if (!cv) return;
+        if (cv.width !== Math.round(W * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); cv.style.width = W + 'px'; cv.style.height = H + 'px'; }
+        const ctx = cv.getContext('2d');
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.clearRect(0, 0, W, H);
+        drawVizStyle(ctx, W, H, fakeSpectrum(t, idx * 1.7), cachedPrimaryColor || '#2E9BFF', btn.dataset.viz);
+      });
+      raf = setTimeout(() => requestAnimationFrame(frame), 33);   // ~30fps is plenty for a preview
+    }
+    function kick() { if (!raf) frame(); }
+    picker.addEventListener('click', (e) => {
+      const btn = e.target.closest('.progress-style-opt');
+      if (!btn) return;
+      currentVizStyle = btn.dataset.viz;
+      try {
+        localStorage.setItem('moodex_viz_style', currentVizStyle);
+        localStorage.setItem('moodex_viz_connected', currentVizStyle === 'bars' ? '0' : '1');
+      } catch (_) { }
+      if (typeof syncVizConnectedUI === 'function') syncVizConnectedUI();
+      hasDrawnPausedFrame = false;
+      if (typeof startVisualizers === 'function') startVisualizers();
+      kick();
+    });
+    document.addEventListener('click', (e) => {
+      if (e.target.closest('[data-cat="tracks"], #nav-settings')) setTimeout(kick, 80);
+    });
+    kick();
+  })();
+
   const btnVizConnected = document.getElementById('btn-viz-connected');
   const btnTvkVizConnected = document.getElementById('btn-tvk-viz-connected');
   function syncVizConnectedUI() {
-    const isConn = localStorage.getItem('moodex_viz_connected') === '1';
+    const isConn = isVizConnectedMode();
     if (btnVizConnected) btnVizConnected.classList.toggle('active', isConn);
     if (btnTvkVizConnected) btnTvkVizConnected.classList.toggle('active', isConn);
     document.body.classList.toggle('viz-connected', isConn);
@@ -16334,9 +16489,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
   function toggleVizConnected() {
-    const isConn = localStorage.getItem('moodex_viz_connected') === '1';
+    const isConn = isVizConnectedMode();
     const next = !isConn;
+    currentVizStyle = next ? 'liquid' : 'bars';
     localStorage.setItem('moodex_viz_connected', next ? '1' : '0');
+    localStorage.setItem('moodex_viz_style', currentVizStyle);
     syncVizConnectedUI();
     const bottomViz = document.getElementById('bottom-visualizer') || document.getElementById('playbar-bg-visualizer');
     if (bottomViz) {
@@ -18141,7 +18298,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   (function initUpdateUI() {
     const api = window.electronAPI;
     const $ = (id) => document.getElementById(id);
-    let currentAppVersion = '1.1.6';
+    let currentAppVersion = '1.1.7';
     if (api && api.getAppVersion) {
       api.getAppVersion().then((v) => {
         if (v) {
@@ -20869,7 +21026,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (typeof showToast === 'function') showToast('No playlists to export', 'error');
       return;
     }
-    let appVer = '1.1.6';
+    let appVer = '1.1.7';
     try {
       if (window.electronAPI && window.electronAPI.getAppVersion) {
         const v = await window.electronAPI.getAppVersion();
@@ -25510,14 +25667,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
-  const DEFAULT_SIDEBAR_ORDER = ['discover', 'favorites', 'albums', 'local', 'downloads', 'history', 'queue', 'wrapped'];
+  const DEFAULT_SIDEBAR_ORDER = ['discover', 'favorites', 'albums', 'local', 'downloads', 'queue', 'wrapped'];
 
   const SIDEBAR_ITEM_DEFS = {
     discover: { name: 'Home', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>' },
     favorites: { name: 'Favorites', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>' },
     albums: { name: 'Albums', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>' },
     local: { name: 'My files', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>' },
-    history: { name: 'History', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>' },
     queue: { name: 'Queue', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="14" y2="17"/></svg>' },
     downloads: { name: 'Downloads', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12"/><polyline points="7 11 12 16 17 11"/><path d="M5 21h14"/></svg>' },
     wrapped: { name: 'Wrapped', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l1.9 4.6 4.6 1.9-4.6 1.9L12 16l-1.9-4.6L5.5 9.5l4.6-1.9L12 3Z"/></svg>' }

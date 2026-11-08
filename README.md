@@ -51,6 +51,17 @@ Moodex is an open-source, telemetry-free desktop music app and player for **Wind
 
 Built with **Electron**, **Vanilla JavaScript**, and **WebGL**, Moodex provides responsive UI interactions and hardware-accelerated audio visualization without runtime framework overhead. The project is distributed under the **MIT license** and enforces strict privacy: all configuration, cached streams, and playback history remain strictly on the local machine.
 
+## What's new in v1.1.7
+
+- **Visualizer styles.** Settings -> Tracks -> *Visualizer style*, right under
+  the progress bar styles, now offers eight looks for the visualizer behind
+  the playbar, each with a live animated preview: **Bars**, **Liquid**,
+  **Mirror**, **Peaks** (bars with falling peak caps), **LED** (retro
+  segmented meter), **Neon** (glowing spectrum line), **Aurora** (layered
+  glowing waves) and **Orbit** (floating light dots). It replaces the old
+  "Connected liquid visualizer" switch; existing Liquid users keep Liquid.
+- **History removed from the sidebar.**
+
 ## What's new in v1.1.6
 
 - **Settings tabs no longer get stuck.** After opening About or Tracks, an
