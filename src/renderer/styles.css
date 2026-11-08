@@ -11249,93 +11249,6 @@ body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .rail-drawer
 }
 
 /* --------------------------------------------------------------------------
-   Compact rail
-   --------------------------------------------------------------------------
-   The labelled rail was 232px of mostly empty space. This stacks the label
-   under its icon so a destination costs one narrow column instead of a wide
-   row: the words stay, the rail drops to 92px, and the content area gets the
-   difference back.
-   -------------------------------------------------------------------------- */
-
-:root { --sidebar-w-expanded: 92px; }
-
-body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) {
-  padding: 10px 6px 14px 6px !important;
-}
-
-body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .sidebar-nav {
-  gap: 2px;
-}
-
-/* Icon above, label below, both centred. */
-body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .sidebar-nav .nav-item,
-body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .rail-icon-btn,
-body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) #nav-discover {
-  flex-direction: column !important;
-  justify-content: center !important;
-  align-items: center !important;
-  gap: 5px !important;
-  width: 100% !important;
-  height: auto !important;
-  min-height: 62px !important;
-  padding: 9px 2px !important;
-  border-radius: 16px !important;
-}
-
-body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .nav-label {
-  font-size: calc(10.5px * var(--font-scale, 1));
-  font-weight: 560;
-  letter-spacing: 0.1px;
-  line-height: 1.1;
-  text-align: center;
-  max-width: 100%;
-}
-
-/* The active row is a rounded tile rather than a full-width bar. */
-body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .sidebar-nav .nav-item.active {
-  background: color-mix(in srgb, var(--md-sys-color-primary) 22%, transparent) !important;
-  color: var(--md-sys-color-on-surface) !important;
-}
-
-body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .sidebar-nav .nav-item.active .nav-indicator {
-  color: var(--md-sys-color-primary) !important;
-}
-
-body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .sidebar-nav .nav-item.active .nav-label {
-  color: var(--md-sys-color-on-surface) !important;
-  font-weight: 680;
-}
-
-/* Badges would collide with a centred icon, so they ride its corner. */
-body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .nav-badge {
-  position: absolute !important;
-  top: -4px;
-  right: -8px;
-  margin-left: 0;
-}
-
-body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .nav-indicator {
-  overflow: visible;
-}
-
-body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .rail-divider {
-  margin: 8px auto 4px;
-  width: 44px;
-}
-
-/* The collapse toggle centres too, now that there is no row to align to. */
-body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .sidebar-rail-toggle {
-  justify-content: center;
-  padding: 0 0 4px;
-}
-
-@media (max-width: 1100px) {
-  body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) {
-    padding: 10px 4px 14px 4px !important;
-  }
-}
-
-/* --------------------------------------------------------------------------
    Unified search source
    --------------------------------------------------------------------------
    Moodex now searches YouTube Music, YouTube and SoundCloud together and
@@ -11347,81 +11260,6 @@ body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .sidebar-rai
 
 .platform-switch-container[hidden] { display: none !important; }
 
-/* ===========================================================================
-   v1.1.1 - Rail active state
-   The active item used to be a flat grey tile with a square neon glow on the
-   24px icon box, which read as a stray box behind the icon. It is now a
-   Material-style pill that hugs the icon, tinted with the Moodex accent, plus
-   a short glowing marker on the rail edge. The label stays outside the pill.
-   =========================================================================== */
-body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .sidebar-nav .nav-item:not(#nav-discover) {
-  position: relative;
-  padding: 6px 2px !important;
-  gap: 4px !important;
-}
-
-body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .sidebar-nav .nav-item:not(#nav-discover),
-body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .sidebar-nav .nav-item:not(#nav-discover):hover,
-body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .sidebar-nav .nav-item.active:not(#nav-discover) {
-  background: transparent !important;
-}
-
-body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .sidebar-nav .nav-item:not(#nav-discover) .nav-indicator {
-  width: 54px !important;
-  height: 30px !important;
-  border-radius: 15px !important;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: none !important;
-  background: transparent !important;
-  transition: background-color 0.22s ease, box-shadow 0.22s ease, transform 0.22s cubic-bezier(0.2, 0, 0, 1);
-}
-
-body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .sidebar-nav .nav-item:not(#nav-discover):not(.active):hover .nav-indicator {
-  background: color-mix(in srgb, var(--md-sys-color-on-surface) 9%, transparent) !important;
-}
-
-body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .sidebar-nav .nav-item.active:not(#nav-discover) .nav-indicator {
-  background:
-    linear-gradient(135deg,
-      color-mix(in srgb, var(--moodex-blue, #2E9BFF) 34%, transparent),
-      color-mix(in srgb, var(--moodex-cyan, #5FD0FF) 16%, transparent)) !important;
-  box-shadow:
-    inset 0 0 0 1px color-mix(in srgb, var(--moodex-cyan, #5FD0FF) 30%, transparent),
-    0 6px 16px -8px color-mix(in srgb, var(--moodex-blue, #2E9BFF) 80%, transparent) !important;
-  color: #fff !important;
-}
-
-body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .sidebar-nav .nav-item.active:not(#nav-discover) svg {
-  color: #fff !important;
-  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--moodex-cyan, #5FD0FF) 55%, transparent));
-}
-
-/* Edge marker: grows in from the rail's left edge. */
-body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .sidebar-nav .nav-item:not(#nav-discover)::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 21px;
-  width: 3px;
-  height: 0;
-  border-radius: 3px;
-  background: linear-gradient(180deg, var(--moodex-cyan, #5FD0FF), var(--moodex-blue, #2E9BFF));
-  box-shadow: 0 0 10px color-mix(in srgb, var(--moodex-blue, #2E9BFF) 70%, transparent);
-  transform: translateY(-50%);
-  transition: height 0.24s cubic-bezier(0.2, 0, 0, 1);
-  pointer-events: none;
-}
-
-body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .sidebar-nav .nav-item.active:not(#nav-discover)::before {
-  height: 22px;
-}
-
-body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .sidebar-nav .nav-item.active:not(#nav-discover) .nav-label {
-  color: var(--moodex-cyan, #5FD0FF) !important;
-}
-
 /* Live search: keep previous results visible but dimmed while the next
    query loads, instead of flashing the loader on every keystroke. */
 #search-tracks-list.is-refreshing,
@@ -11430,3 +11268,216 @@ body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .sidebar-nav
   transition: opacity 0.15s ease;
   pointer-events: none;
 }
+
+/* ===========================================================================
+   v1.1.2 - Labelled sidebar
+   Brand mark on top, icon + label rows, a blue gradient pill for the active
+   destination, count badges in a right-hand column, Settings pinned to the
+   bottom. Collapsing (the panel button) still gives the icon-only rail.
+   =========================================================================== */
+:root {
+  --sidebar-w-expanded: 204px;
+  --sb-pill: linear-gradient(90deg, #1A5CF0 0%, #2E9BFF 70%, color-mix(in srgb, #2E9BFF 55%, transparent) 100%);
+}
+
+body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) {
+  position: relative;
+  padding: 18px 12px 16px 12px !important;
+}
+
+/* Brand */
+.sidebar-brand { display: none; }
+body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .sidebar-brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0 14px;
+  flex-shrink: 0;
+  user-select: none;
+}
+.sidebar-brand-logo {
+  width: 64px;
+  height: auto;
+  filter: drop-shadow(0 0 14px color-mix(in srgb, #2E9BFF 55%, transparent));
+}
+.sidebar-brand-name {
+  font-size: calc(19px * var(--font-scale, 1));
+  font-weight: 650;
+  letter-spacing: 0.2px;
+  color: var(--md-sys-color-on-surface);
+}
+
+/* Collapse toggle: tucked into the corner, quiet until hovered. */
+body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .sidebar-rail-toggle {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 2;
+  opacity: 0;
+  transition: opacity 0.18s ease;
+}
+body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed):hover .sidebar-rail-toggle,
+body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .sidebar-rail-toggle:focus-within {
+  opacity: 0.75;
+}
+
+/* Rows */
+body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .sidebar-nav {
+  gap: 2px !important;
+  align-items: stretch !important;
+}
+
+body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .sidebar-nav .nav-item,
+body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .sidebar-nav #nav-discover,
+body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .rail-icon-btn {
+  position: relative;
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  gap: 14px !important;
+  width: 100% !important;
+  height: 42px !important;
+  min-height: 42px !important;
+  padding: 0 16px !important;
+  margin: 0 !important;
+  border-radius: 21px !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: color-mix(in srgb, var(--md-sys-color-on-surface) 88%, transparent) !important;
+  transition: background-color 0.18s ease, color 0.18s ease;
+}
+
+body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .sidebar-nav .nav-item:not(.active):hover,
+body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .rail-icon-btn:hover {
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent) !important;
+}
+
+body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .sidebar-nav .nav-item .nav-indicator {
+  position: static !important;
+  width: 22px !important;
+  height: 22px !important;
+  min-width: 22px;
+  padding: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .sidebar-nav .nav-item svg,
+body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .rail-icon-btn svg {
+  width: 21px !important;
+  height: 21px !important;
+  flex-shrink: 0;
+  filter: none !important;
+}
+
+body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .nav-label {
+  display: block !important;
+  font-size: calc(14px * var(--font-scale, 1)) !important;
+  font-weight: 500 !important;
+  line-height: 1.2 !important;
+  text-align: left !important;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: inherit !important;
+  opacity: 1 !important;
+}
+
+/* Home: a house glyph in the row; the app-icon image is for the collapsed rail. */
+.nav-home-glyph,
+.sidebar.rail-collapsed .nav-home-glyph,
+body.classic-sidebar .nav-home-glyph,
+body.mini .nav-home-glyph { display: none !important; }
+body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .nav-home-glyph { display: block !important; }
+body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .nav-home-app-icon { display: none !important; }
+
+/* Active: blue gradient pill */
+body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .sidebar-nav .nav-item.active,
+body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .sidebar-nav #nav-discover.active {
+  background: var(--sb-pill) !important;
+  color: #fff !important;
+  box-shadow: 0 6px 20px -8px color-mix(in srgb, #2E9BFF 85%, transparent) !important;
+}
+body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .sidebar-nav .nav-item.active .nav-label {
+  font-weight: 650 !important;
+  color: #fff !important;
+}
+body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .sidebar-nav .nav-item.active svg {
+  color: #fff !important;
+}
+body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .sidebar-nav .nav-item::before,
+body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .nav-active-indicator {
+  display: none !important;
+}
+
+/* Count badges: white chips in a right-hand column */
+body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .nav-badge {
+  position: absolute !important;
+  top: 50% !important;
+  right: 16px !important;
+  left: auto !important;
+  transform: translateY(-50%) !important;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px !important;
+  margin: 0 !important;
+  border-radius: 10px !important;
+  background: #fff !important;
+  color: #0b0d12 !important;
+  font-size: calc(11px * var(--font-scale, 1)) !important;
+  font-weight: 700 !important;
+  line-height: 20px !important;
+  text-align: center;
+  box-sizing: border-box;
+}
+
+/* Divider above Settings */
+body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .rail-divider {
+  display: none !important;
+}
+body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .rail-action-group {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 2px !important;
+  width: 100% !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+}
+body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) #nav-settings {
+  margin-top: 10px !important;
+}
+body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) #nav-settings::after {
+  content: '';
+  position: absolute;
+  inset: auto 14px calc(100% + 6px) 14px;
+  height: 1px;
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 14%, transparent);
+  pointer-events: none;
+}
+
+/* One panel: the sidebar and the content area share a single rounded card
+   instead of reading as a strip beside a box. */
+body:not(.classic-sidebar):not(.mini) .app-layout > .sidebar {
+  margin-left: 12px !important;
+  background: var(--sb-panel-bg, #000) !important;
+  border-radius: 34px 0 0 34px !important;
+  overflow: hidden;
+}
+body:not(.classic-sidebar):not(.mini) .app-layout > .sidebar ~ .main-content-wrap,
+body:not(.classic-sidebar):not(.mini) .app-layout > .sidebar ~ .main-content-wrap > .main-content {
+  border-top-left-radius: 0 !important;
+  border-bottom-left-radius: 0 !important;
+}
+
+/* Collapsed rail inside the shared panel: tighter spacing so Settings still
+   fits above the panel's rounded bottom edge. */
+body:not(.classic-sidebar):not(.mini) .sidebar.rail-collapsed .sidebar-nav { gap: 6px !important; }

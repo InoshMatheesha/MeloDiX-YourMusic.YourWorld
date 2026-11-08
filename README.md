@@ -51,6 +51,16 @@ Moodex is an open-source, telemetry-free desktop music app and player for **Wind
 
 Built with **Electron**, **Vanilla JavaScript**, and **WebGL**, Moodex provides responsive UI interactions and hardware-accelerated audio visualization without runtime framework overhead. The project is distributed under the **MIT license** and enforces strict privacy: all configuration, cached streams, and playback history remain strictly on the local machine.
 
+## What's new in v1.1.2
+
+### Redesigned sidebar
+The sidebar is back to labelled rows, with the Moodex mark and name at the
+top. The current page is highlighted by a blue gradient pill, counts (History,
+Queue, Liked) sit in white chips on the right, and Settings is pinned to the
+bottom under a divider. The sidebar and the content area now share one rounded
+panel instead of looking like a strip beside a box. The panel button in the
+top corner still collapses it to an icon-only rail.
+
 ## What's new in v1.1.1
 
 ### Up next plays different songs, not the same song again
