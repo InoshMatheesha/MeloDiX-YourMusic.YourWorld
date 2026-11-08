@@ -1,111 +1,111 @@
 (function initMoodexDiskStorageDaemon() {
-if (!window.electronAPI || typeof window.electronAPI.storageInitSync !== 'function') return;
-const origGet = Storage.prototype.getItem;
-const origSet = Storage.prototype.setItem;
-const origRemove = Storage.prototype.removeItem;
-const origClear = Storage.prototype.clear;
-const origKey = Storage.prototype.key;
+  if (!window.electronAPI || typeof window.electronAPI.storageInitSync !== 'function') return;
+  const origGet = Storage.prototype.getItem;
+  const origSet = Storage.prototype.setItem;
+  const origRemove = Storage.prototype.removeItem;
+  const origClear = Storage.prototype.clear;
+  const origKey = Storage.prototype.key;
 
-let diskMap = window.electronAPI.storageInitSync();
-let migrated = false;
+  let diskMap = window.electronAPI.storageInitSync();
+  let migrated = false;
 
-if (!diskMap || typeof diskMap !== 'object' || Object.keys(diskMap).length === 0) {
-diskMap = {};
-try {
-const len = window.localStorage.length;
-for (let i = 0; i < len; i++) {
-const k = origKey.call(window.localStorage, i);
-if (k) diskMap[k] = origGet.call(window.localStorage, k);
-}
-if (Object.keys(diskMap).length > 0) migrated = true;
-} catch (_) {}
-} else {
-try {
-const len = window.localStorage.length;
-for (let i = 0; i < len; i++) {
-const k = origKey.call(window.localStorage, i);
-if (k && !Object.prototype.hasOwnProperty.call(diskMap, k)) {
-diskMap[k] = origGet.call(window.localStorage, k);
-migrated = true;
-}
-}
-} catch (_) {}
-}
+  if (!diskMap || typeof diskMap !== 'object' || Object.keys(diskMap).length === 0) {
+    diskMap = {};
+    try {
+      const len = window.localStorage.length;
+      for (let i = 0; i < len; i++) {
+        const k = origKey.call(window.localStorage, i);
+        if (k) diskMap[k] = origGet.call(window.localStorage, k);
+      }
+      if (Object.keys(diskMap).length > 0) migrated = true;
+    } catch (_) { }
+  } else {
+    try {
+      const len = window.localStorage.length;
+      for (let i = 0; i < len; i++) {
+        const k = origKey.call(window.localStorage, i);
+        if (k && !Object.prototype.hasOwnProperty.call(diskMap, k)) {
+          diskMap[k] = origGet.call(window.localStorage, k);
+          migrated = true;
+        }
+      }
+    } catch (_) { }
+  }
 
-try { origClear.call(window.localStorage); } catch (_) {}
-window.__MOODEX_STORAGE_MAP__ = diskMap;
+  try { origClear.call(window.localStorage); } catch (_) { }
+  window.__MOODEX_STORAGE_MAP__ = diskMap;
 
-if (migrated) {
-window.electronAPI.storageSaveSync(diskMap);
-}
+  if (migrated) {
+    window.electronAPI.storageSaveSync(diskMap);
+  }
 
-function flushAsync() {
-window.electronAPI.storageSaveBatch(diskMap);
-}
+  function flushAsync() {
+    window.electronAPI.storageSaveBatch(diskMap);
+  }
 
-Storage.prototype.getItem = function(key) {
-if (this === window.localStorage) {
-const k = String(key);
-return Object.prototype.hasOwnProperty.call(diskMap, k) ? diskMap[k] : null;
-}
-return origGet.call(this, key);
-};
+  Storage.prototype.getItem = function (key) {
+    if (this === window.localStorage) {
+      const k = String(key);
+      return Object.prototype.hasOwnProperty.call(diskMap, k) ? diskMap[k] : null;
+    }
+    return origGet.call(this, key);
+  };
 
-Storage.prototype.setItem = function(key, val) {
-if (this === window.localStorage) {
-const k = String(key);
-const v = String(val);
-if (diskMap[k] === v) return;
-diskMap[k] = v;
-flushAsync();
-return;
-}
-origSet.call(this, key, val);
-};
+  Storage.prototype.setItem = function (key, val) {
+    if (this === window.localStorage) {
+      const k = String(key);
+      const v = String(val);
+      if (diskMap[k] === v) return;
+      diskMap[k] = v;
+      flushAsync();
+      return;
+    }
+    origSet.call(this, key, val);
+  };
 
-Storage.prototype.removeItem = function(key) {
-if (this === window.localStorage) {
-const k = String(key);
-if (Object.prototype.hasOwnProperty.call(diskMap, k)) {
-delete diskMap[k];
-flushAsync();
-}
-return;
-}
-origRemove.call(this, key);
-};
+  Storage.prototype.removeItem = function (key) {
+    if (this === window.localStorage) {
+      const k = String(key);
+      if (Object.prototype.hasOwnProperty.call(diskMap, k)) {
+        delete diskMap[k];
+        flushAsync();
+      }
+      return;
+    }
+    origRemove.call(this, key);
+  };
 
-Storage.prototype.clear = function() {
-if (this === window.localStorage) {
-diskMap = {};
-window.__MOODEX_STORAGE_MAP__ = diskMap;
-flushAsync();
-return;
-}
-origClear.call(this);
-};
+  Storage.prototype.clear = function () {
+    if (this === window.localStorage) {
+      diskMap = {};
+      window.__MOODEX_STORAGE_MAP__ = diskMap;
+      flushAsync();
+      return;
+    }
+    origClear.call(this);
+  };
 
-Storage.prototype.key = function(index) {
-if (this === window.localStorage) {
-const keys = Object.keys(diskMap);
-return keys[index] !== undefined ? keys[index] : null;
-}
-return origKey.call(this, index);
-};
+  Storage.prototype.key = function (index) {
+    if (this === window.localStorage) {
+      const keys = Object.keys(diskMap);
+      return keys[index] !== undefined ? keys[index] : null;
+    }
+    return origKey.call(this, index);
+  };
 
-try {
-Object.defineProperty(Storage.prototype, 'length', {
-configurable: true,
-get: function() {
-if (this === window.localStorage) return Object.keys(diskMap).length;
-return 0;
-}
-});
-} catch (_) {}
+  try {
+    Object.defineProperty(Storage.prototype, 'length', {
+      configurable: true,
+      get: function () {
+        if (this === window.localStorage) return Object.keys(diskMap).length;
+        return 0;
+      }
+    });
+  } catch (_) { }
 
-window.addEventListener('beforeunload', () => {
-try { window.electronAPI.storageSaveSync(diskMap); } catch (_) {}
-});
+  window.addEventListener('beforeunload', () => {
+    try { window.electronAPI.storageSaveSync(diskMap); } catch (_) { }
+  });
 })();
 
 (() => {
@@ -127,10 +127,10 @@ try { window.electronAPI.storageSaveSync(diskMap); } catch (_) {}
           opts.headers = headers;
           return origFetch(input, opts);
         }
-      } catch (e) {}
+      } catch (e) { }
       return origFetch(input, init);
     };
-  } catch (e) {}
+  } catch (e) { }
 })();
 
 (() => {
@@ -218,7 +218,7 @@ function stripYoutubeTopic(artist) {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
-  try { localStorage.removeItem('moodex_stats'); } catch (e) {}
+  try { localStorage.removeItem('moodex_stats'); } catch (e) { }
   var lyricsScrollRaf = 0;
   var gradientRaf = 0;
   var cacheRafId = 0;
@@ -291,14 +291,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const formulas = {
       'm3-cookie-4': (a) => 40 + 6 * Math.cos(4 * a),
-                          'm3-diamond-puffy': (a) => 36 + 10 * Math.cos(4 * a),
-                          'm3-flower': (a) => 28 + 18 * Math.abs(Math.cos(4 * a)),
-                          'm3-poly-6': (a) => {
-                            let t = a % (2 * Math.PI / 6);
-                            if (t < 0) t += 2 * Math.PI / 6;
-                            return 36 / Math.cos(t - Math.PI / 6);
-                          },
-                          'm3-leaf-4': (a) => 40 + 6 * Math.cos(4 * a)
+      'm3-diamond-puffy': (a) => 36 + 10 * Math.cos(4 * a),
+      'm3-flower': (a) => 28 + 18 * Math.abs(Math.cos(4 * a)),
+      'm3-poly-6': (a) => {
+        let t = a % (2 * Math.PI / 6);
+        if (t < 0) t += 2 * Math.PI / 6;
+        return 36 / Math.cos(t - Math.PI / 6);
+      },
+      'm3-leaf-4': (a) => 40 + 6 * Math.cos(4 * a)
     };
 
     let html = '';
@@ -340,7 +340,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           if (!i18nSessionMap.has(lang)) i18nSessionMap.set(lang, new Map());
           i18nSessionMap.get(lang).set(str, data.translations[0]);
         }
-      }).catch(() => {});
+      }).catch(() => { });
     }
     return str;
   }
@@ -550,16 +550,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         speed: typeof s.speed === 'number' ? s.speed : 1.0,
         speedPitch: typeof s.speedPitch === 'number' ? s.speedPitch : 1.0,
         pitch: typeof s.pitch === 'number' ? s.pitch : (typeof s.pitchSemitones === 'number' ? s.pitchSemitones : 0),
-                          reverb: typeof s.reverb === 'number' ? s.reverb : 0,
-                          distortion: typeof s.distortion === 'number' ? s.distortion : 0,
-                          volume: typeof s.volume === 'number' ? s.volume : (typeof s.gain === 'number' ? s.gain : 1.0),
-                          echo: typeof s.echo === 'number' ? s.echo : 0,
-                          eq: {
-                            low: typeof eq.low === 'number' ? eq.low : 0,
-                            mid: typeof eq.mid === 'number' ? eq.mid : 0,
-                            high: typeof eq.high === 'number' ? eq.high : 0
-                          },
-                          eqBands: Array.isArray(s.eqBands) && s.eqBands.length === 10 ? s.eqBands.map(v => typeof v === 'number' ? v : 0) : [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        reverb: typeof s.reverb === 'number' ? s.reverb : 0,
+        distortion: typeof s.distortion === 'number' ? s.distortion : 0,
+        volume: typeof s.volume === 'number' ? s.volume : (typeof s.gain === 'number' ? s.gain : 1.0),
+        echo: typeof s.echo === 'number' ? s.echo : 0,
+        eq: {
+          low: typeof eq.low === 'number' ? eq.low : 0,
+          mid: typeof eq.mid === 'number' ? eq.mid : 0,
+          high: typeof eq.high === 'number' ? eq.high : 0
+        },
+        eqBands: Array.isArray(s.eqBands) && s.eqBands.length === 10 ? s.eqBands.map(v => typeof v === 'number' ? v : 0) : [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
       }
     };
   }
@@ -693,41 +693,41 @@ document.addEventListener('DOMContentLoaded', async () => {
     trActive: false,
     currentTranslations: null,
     isTvKaraokeOpen: false,
-                          audioSettings: savedSound.audioSettings,
-                          hqEnabled: savedSound.hqEnabled,
-                          hqSettings: savedSound.hqSettings,
-                          vfx: { ...defaultVfx, ...safeJson('devsize_vfx', {}), bassPulse: false, particles: false, soundwaveRings: false, borderGlow: false, backdropBlur: false, crt: false, grain: false, lyricsSpotlight: false },
-                          favorites: safeArray('devsize_favorites'),
-                          history: safeArray('devsize_history'),
-                          playlists: safeArray('devsize_playlists'),
-                          customPresets: normalizedCustomPresets,
-                          localTracks: (safeArray('moodex_local_tracks').length > 0 ? safeArray('moodex_local_tracks') : safeArray('devsize_local_tracks')).filter(t => {
-                            const b = safeJson('moodex_removed_local_paths', []);
-                            const p = String(t?.path || t?.filePath || t?.url || '');
-                            const id = String(t?.id || '');
-                            return (!p || !b.includes(p)) && (!id || !b.includes(id));
-                          }),
-                          localFiles: (safeArray('moodex_local_files').length > 0 ? safeArray('moodex_local_files') : safeArray('devsize_local_files')).filter(t => {
-                            const b = safeJson('moodex_removed_local_paths', []);
-                            const p = String(t?.path || t?.filePath || t?.url || '');
-                            const id = String(t?.id || '');
-                            return (!p || !b.includes(p)) && (!id || !b.includes(id));
-                          }),
-                          syncedLyrics: [],
-                          glitchTimes: [],
-                          lastGlitchedIndex: -1,
-                          isGlitching: false,
-                          isWindowVisible: true,
-                          loadToken: 0,
-                          audioDurationStale: false,
-                          currentAbortController: null,
-                          presetToRenameId: null,
-                          serverPort: 38472,
-                          discordRpcEnabled: safeJson('devsize_discord_rpc', true),
-                          lastBroadcastStateKey: null,
-                          syncTimeout: null,
-                          scrubberDragTargetTime: undefined,
-                          moodexFont: localStorage.getItem('moodex_font') || 'google'
+    audioSettings: savedSound.audioSettings,
+    hqEnabled: savedSound.hqEnabled,
+    hqSettings: savedSound.hqSettings,
+    vfx: { ...defaultVfx, ...safeJson('devsize_vfx', {}), bassPulse: false, particles: false, soundwaveRings: false, borderGlow: false, backdropBlur: false, crt: false, grain: false, lyricsSpotlight: false },
+    favorites: safeArray('devsize_favorites'),
+    history: safeArray('devsize_history'),
+    playlists: safeArray('devsize_playlists'),
+    customPresets: normalizedCustomPresets,
+    localTracks: (safeArray('moodex_local_tracks').length > 0 ? safeArray('moodex_local_tracks') : safeArray('devsize_local_tracks')).filter(t => {
+      const b = safeJson('moodex_removed_local_paths', []);
+      const p = String(t?.path || t?.filePath || t?.url || '');
+      const id = String(t?.id || '');
+      return (!p || !b.includes(p)) && (!id || !b.includes(id));
+    }),
+    localFiles: (safeArray('moodex_local_files').length > 0 ? safeArray('moodex_local_files') : safeArray('devsize_local_files')).filter(t => {
+      const b = safeJson('moodex_removed_local_paths', []);
+      const p = String(t?.path || t?.filePath || t?.url || '');
+      const id = String(t?.id || '');
+      return (!p || !b.includes(p)) && (!id || !b.includes(id));
+    }),
+    syncedLyrics: [],
+    glitchTimes: [],
+    lastGlitchedIndex: -1,
+    isGlitching: false,
+    isWindowVisible: true,
+    loadToken: 0,
+    audioDurationStale: false,
+    currentAbortController: null,
+    presetToRenameId: null,
+    serverPort: 38472,
+    discordRpcEnabled: safeJson('devsize_discord_rpc', true),
+    lastBroadcastStateKey: null,
+    syncTimeout: null,
+    scrubberDragTargetTime: undefined,
+    moodexFont: localStorage.getItem('moodex_font') || 'google'
   };
 
   function migrateAddedAt() {
@@ -807,7 +807,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         wordIndex: wordIndex,
         lineIndex: lineIndex
       })
-    }).catch(() => {});
+    }).catch(() => { });
   }
 
   function getMediaArtwork(thumb) {
@@ -849,7 +849,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       } else {
         navigator.mediaSession.setPositionState();
       }
-    } catch (_) {}
+    } catch (_) { }
   }
 
   function updateMediaSession(track) {
@@ -912,7 +912,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           updateMediaPositionState();
         }
       });
-    } catch (_) {}
+    } catch (_) { }
   }
 
   function hexToRgb(hex) {
@@ -1191,7 +1191,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const data = ctx.getImageData(0, 0, 10, 10).data;
         let r = 0, g = 0, b = 0;
         for (let i = 0; i < data.length; i += 4) {
-          r += data[i]; g += data[i+1]; b += data[i+2];
+          r += data[i]; g += data[i + 1]; b += data[i + 2];
         }
         const count = data.length / 4;
         r = Math.floor(r / count);
@@ -1444,7 +1444,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       meshCoverColors = [colorToHex(a), colorToHex(b || a)];
       lastMeshKey = '';
       if (lastMeshArgs) updateMeshGradient(...lastMeshArgs);
-    } catch (_) {}
+    } catch (_) { }
   }
 
   let coverBgIdx = 0;
@@ -1719,304 +1719,304 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   const el = {
     btnMinimize: document.getElementById('btn-minimize'),
-                          btnMaximize: document.getElementById('btn-maximize'),
-                          btnClose: document.getElementById('btn-close'),
+    btnMaximize: document.getElementById('btn-maximize'),
+    btnClose: document.getElementById('btn-close'),
 
-                          searchInput: document.getElementById('search-input'),
-                          searchClearBtn: document.getElementById('search-clear-btn'),
-                          searchIconBtn: document.getElementById('search-icon-btn'),
-                          platformYt: document.getElementById('platform-yt'),
-                          platformYtm: document.getElementById('platform-ytm'),
-                          platformSc: document.getElementById('platform-sc'),
+    searchInput: document.getElementById('search-input'),
+    searchClearBtn: document.getElementById('search-clear-btn'),
+    searchIconBtn: document.getElementById('search-icon-btn'),
+    platformYt: document.getElementById('platform-yt'),
+    platformYtm: document.getElementById('platform-ytm'),
+    platformSc: document.getElementById('platform-sc'),
 
-                          navActiveIndicator: document.getElementById('nav-active-indicator'),
-                          navDiscover: document.getElementById('nav-discover'),
-                          navSearch: document.getElementById('nav-search'),
-                          navFavorites: document.getElementById('nav-favorites'),
-                          navAlbums: document.getElementById('nav-albums'),
-                          navLocal: document.getElementById('nav-local'),
-                          navDownloads: document.getElementById('nav-downloads'),
-                          navHistory: document.getElementById('nav-history'),
-                          navQueue: document.getElementById('nav-queue'),
-                          navWrapped: document.getElementById('nav-wrapped'),
-                          navSettings: document.getElementById('nav-settings'),
-                          downloadsCount: document.getElementById('downloads-count'),
-                          btnRailToggle: document.getElementById('btn-rail-toggle'),
-                          sidebarEl: document.getElementById('sidebar'),
-                          viewDownloads: document.getElementById('view-downloads'),
-                          viewWrapped: document.getElementById('view-wrapped'),
-                          downloadsTracksList: document.getElementById('downloads-tracks-list'),
-                          downloadsSummary: document.getElementById('downloads-summary'),
-                          btnRefreshDownloads: document.getElementById('btn-refresh-downloads'),
-                          btnOpenDownloadsFolder: document.getElementById('btn-open-downloads-folder'),
-                          wrappedStatGrid: document.getElementById('wrapped-stat-grid'),
-                          wrappedTopTracks: document.getElementById('wrapped-top-tracks'),
-                          wrappedTopArtists: document.getElementById('wrapped-top-artists'),
-                          wrappedEmpty: document.getElementById('wrapped-empty'),
-                          wrappedPeriod: document.getElementById('wrapped-period'),
-                          btnResetWrapped: document.getElementById('btn-reset-wrapped'),
-                          favoritesCount: document.getElementById('favorites-count'),
-                          albumsCount: document.getElementById('albums-count'),
-                          localCount: document.getElementById('local-count'),
-                          queueCount: document.getElementById('queue-count'),
-                          historyCount: document.getElementById('history-count'),
+    navActiveIndicator: document.getElementById('nav-active-indicator'),
+    navDiscover: document.getElementById('nav-discover'),
+    navSearch: document.getElementById('nav-search'),
+    navFavorites: document.getElementById('nav-favorites'),
+    navAlbums: document.getElementById('nav-albums'),
+    navLocal: document.getElementById('nav-local'),
+    navDownloads: document.getElementById('nav-downloads'),
+    navHistory: document.getElementById('nav-history'),
+    navQueue: document.getElementById('nav-queue'),
+    navWrapped: document.getElementById('nav-wrapped'),
+    navSettings: document.getElementById('nav-settings'),
+    downloadsCount: document.getElementById('downloads-count'),
+    btnRailToggle: document.getElementById('btn-rail-toggle'),
+    sidebarEl: document.getElementById('sidebar'),
+    viewDownloads: document.getElementById('view-downloads'),
+    viewWrapped: document.getElementById('view-wrapped'),
+    downloadsTracksList: document.getElementById('downloads-tracks-list'),
+    downloadsSummary: document.getElementById('downloads-summary'),
+    btnRefreshDownloads: document.getElementById('btn-refresh-downloads'),
+    btnOpenDownloadsFolder: document.getElementById('btn-open-downloads-folder'),
+    wrappedStatGrid: document.getElementById('wrapped-stat-grid'),
+    wrappedTopTracks: document.getElementById('wrapped-top-tracks'),
+    wrappedTopArtists: document.getElementById('wrapped-top-artists'),
+    wrappedEmpty: document.getElementById('wrapped-empty'),
+    wrappedPeriod: document.getElementById('wrapped-period'),
+    btnResetWrapped: document.getElementById('btn-reset-wrapped'),
+    favoritesCount: document.getElementById('favorites-count'),
+    albumsCount: document.getElementById('albums-count'),
+    localCount: document.getElementById('local-count'),
+    queueCount: document.getElementById('queue-count'),
+    historyCount: document.getElementById('history-count'),
 
-                          presetsContainer: document.getElementById('presets-container'),
-                          btnSavePresetDialog: document.getElementById('btn-save-preset-dialog'),
-                          savePresetModal: document.getElementById('save-preset-modal'),
-                          newPresetName: document.getElementById('new-preset-name'),
-                          btnCancelPreset: document.getElementById('btn-cancel-preset'),
-                          btnConfirmSavePreset: document.getElementById('btn-confirm-save-preset'),
+    presetsContainer: document.getElementById('presets-container'),
+    btnSavePresetDialog: document.getElementById('btn-save-preset-dialog'),
+    savePresetModal: document.getElementById('save-preset-modal'),
+    newPresetName: document.getElementById('new-preset-name'),
+    btnCancelPreset: document.getElementById('btn-cancel-preset'),
+    btnConfirmSavePreset: document.getElementById('btn-confirm-save-preset'),
 
-                          renamePresetModal: document.getElementById('rename-preset-modal'),
-                          renamePresetName: document.getElementById('rename-preset-name'),
-                          btnCancelRenamePreset: document.getElementById('btn-cancel-rename-preset'),
-                          btnConfirmRenamePreset: document.getElementById('btn-confirm-rename-preset'),
+    renamePresetModal: document.getElementById('rename-preset-modal'),
+    renamePresetName: document.getElementById('rename-preset-name'),
+    btnCancelRenamePreset: document.getElementById('btn-cancel-rename-preset'),
+    btnConfirmRenamePreset: document.getElementById('btn-confirm-rename-preset'),
 
-                          playlistsList: document.getElementById('playlists-list'),
-                          btnNewPlaylist: document.getElementById('btn-new-playlist'),
+    playlistsList: document.getElementById('playlists-list'),
+    btnNewPlaylist: document.getElementById('btn-new-playlist'),
 
-                          viewDiscover: document.getElementById('view-discover'),
-                          viewFavorites: document.getElementById('view-favorites'),
-                          viewAlbums: document.getElementById('view-albums'),
-                          savedAlbumsGrid: document.getElementById('saved-albums-grid'),
-                          viewLocal: document.getElementById('view-local'),
-                          viewHistory: document.getElementById('view-history'),
-                          viewQueue: document.getElementById('view-queue'),
-                          viewPlaylistDetail: document.getElementById('view-playlist-detail'),
-                          viewAlbum: document.getElementById('view-album'),
-                          viewArtist: document.getElementById('view-artist'),
-                          viewSettings: document.getElementById('view-settings'),
+    viewDiscover: document.getElementById('view-discover'),
+    viewFavorites: document.getElementById('view-favorites'),
+    viewAlbums: document.getElementById('view-albums'),
+    savedAlbumsGrid: document.getElementById('saved-albums-grid'),
+    viewLocal: document.getElementById('view-local'),
+    viewHistory: document.getElementById('view-history'),
+    viewQueue: document.getElementById('view-queue'),
+    viewPlaylistDetail: document.getElementById('view-playlist-detail'),
+    viewAlbum: document.getElementById('view-album'),
+    viewArtist: document.getElementById('view-artist'),
+    viewSettings: document.getElementById('view-settings'),
 
-                          btnBackAlbum: document.getElementById('btn-back-album'),
-                          btnSaveAlbum: document.getElementById('btn-save-album'),
-                          albumDetailCover: document.getElementById('album-detail-cover'),
-                          albumDetailTitle: document.getElementById('album-detail-title'),
-                          albumDetailArtist: document.getElementById('album-detail-artist'),
-                          albumDetailCount: document.getElementById('album-detail-count'),
-                          btnPlayAlbum: document.getElementById('btn-play-album'),
-                          albumTracksList: document.getElementById('album-tracks-list'),
+    btnBackAlbum: document.getElementById('btn-back-album'),
+    btnSaveAlbum: document.getElementById('btn-save-album'),
+    albumDetailCover: document.getElementById('album-detail-cover'),
+    albumDetailTitle: document.getElementById('album-detail-title'),
+    albumDetailArtist: document.getElementById('album-detail-artist'),
+    albumDetailCount: document.getElementById('album-detail-count'),
+    btnPlayAlbum: document.getElementById('btn-play-album'),
+    albumTracksList: document.getElementById('album-tracks-list'),
 
-                          btnBackArtist: document.getElementById('btn-back-artist'),
-                          artistHeroImg: document.getElementById('artist-hero-img'),
-                          artistFansLine: document.getElementById('artist-fans-line'),
-                          artistVerifiedBadge: document.getElementById('artist-verified-badge'),
-                          artistProfileName: document.getElementById('artist-profile-name'),
-                          artistProfileBio: document.getElementById('artist-profile-bio'),
-                          btnPlayArtistTracks: document.getElementById('btn-play-artist-tracks'),
-                          artistTracksCount: document.getElementById('artist-tracks-count'),
-                          artistTracksList: document.getElementById('artist-tracks-list'),
+    btnBackArtist: document.getElementById('btn-back-artist'),
+    artistHeroImg: document.getElementById('artist-hero-img'),
+    artistFansLine: document.getElementById('artist-fans-line'),
+    artistVerifiedBadge: document.getElementById('artist-verified-badge'),
+    artistProfileName: document.getElementById('artist-profile-name'),
+    artistProfileBio: document.getElementById('artist-profile-bio'),
+    btnPlayArtistTracks: document.getElementById('btn-play-artist-tracks'),
+    artistTracksCount: document.getElementById('artist-tracks-count'),
+    artistTracksList: document.getElementById('artist-tracks-list'),
 
-                          discoverEmpty: document.getElementById('discover-empty'),
-                          discoverHome: document.getElementById('discover-home'),
-                          searchResultsContainer: document.getElementById('search-results-container'),
-                          searchResults: document.getElementById('search-results-container'),
-                          searchTracksList: document.getElementById('search-tracks-list'),
-                          mainContent: document.getElementById('main-content') || document.querySelector('.main-content'),
-                          suggestionChips: document.getElementById('suggestion-chips'),
+    discoverEmpty: document.getElementById('discover-empty'),
+    discoverHome: document.getElementById('discover-home'),
+    searchResultsContainer: document.getElementById('search-results-container'),
+    searchResults: document.getElementById('search-results-container'),
+    searchTracksList: document.getElementById('search-tracks-list'),
+    mainContent: document.getElementById('main-content') || document.querySelector('.main-content'),
+    suggestionChips: document.getElementById('suggestion-chips'),
 
-                          favoritesTracksList: document.getElementById('favorites-tracks-list'),
-                          favoritesSearchInput: document.getElementById('favorites-search-input'),
-                          favoritesSort: document.getElementById('favorites-sort'),
-                          playlistSearchInput: document.getElementById('playlist-search-input'),
-                          playlistSort: document.getElementById('playlist-sort'),
-                          favoritesSubtitle: document.getElementById('favorites-subtitle'),
-                          localTracksList: document.getElementById('local-tracks-list'),
-                          localSearchInput: document.getElementById('local-search-input'),
-                          localSubtitle: document.getElementById('local-subtitle'),
-                          btnAddLocal: document.getElementById('btn-add-local') || document.getElementById('btn-add-local-files'),
-                          btnAddLocalFiles: document.getElementById('btn-add-local') || document.getElementById('btn-add-local-files'),
-                          btnAddLocalFolder: document.getElementById('btn-add-local-folder'),
-                          btnAddLocalFilesEmpty: document.getElementById('btn-add-local-files-empty'),
-                          localAlbumsRow: document.getElementById('local-albums-row'),
-                          historyTracksList: document.getElementById('history-tracks-list'),
-                          btnClearHistory: document.getElementById('btn-clear-history'),
-                          queueTracksList: document.getElementById('queue-tracks-list'),
-                          btnClearQueue: document.getElementById('btn-clear-queue'),
-                          playlistTracksList: document.getElementById('playlist-tracks-list'),
-                          playlistDetailTitle: document.getElementById('playlist-detail-title'),
-                          playlistDetailCount: document.getElementById('playlist-detail-count'),
-                          btnBackPlaylists: document.getElementById('btn-back-playlists'),
-                          btnPlayPlaylist: document.getElementById('btn-play-playlist'),
-                          btnDeletePlaylist: document.getElementById('btn-delete-playlist'),
+    favoritesTracksList: document.getElementById('favorites-tracks-list'),
+    favoritesSearchInput: document.getElementById('favorites-search-input'),
+    favoritesSort: document.getElementById('favorites-sort'),
+    playlistSearchInput: document.getElementById('playlist-search-input'),
+    playlistSort: document.getElementById('playlist-sort'),
+    favoritesSubtitle: document.getElementById('favorites-subtitle'),
+    localTracksList: document.getElementById('local-tracks-list'),
+    localSearchInput: document.getElementById('local-search-input'),
+    localSubtitle: document.getElementById('local-subtitle'),
+    btnAddLocal: document.getElementById('btn-add-local') || document.getElementById('btn-add-local-files'),
+    btnAddLocalFiles: document.getElementById('btn-add-local') || document.getElementById('btn-add-local-files'),
+    btnAddLocalFolder: document.getElementById('btn-add-local-folder'),
+    btnAddLocalFilesEmpty: document.getElementById('btn-add-local-files-empty'),
+    localAlbumsRow: document.getElementById('local-albums-row'),
+    historyTracksList: document.getElementById('history-tracks-list'),
+    btnClearHistory: document.getElementById('btn-clear-history'),
+    queueTracksList: document.getElementById('queue-tracks-list'),
+    btnClearQueue: document.getElementById('btn-clear-queue'),
+    playlistTracksList: document.getElementById('playlist-tracks-list'),
+    playlistDetailTitle: document.getElementById('playlist-detail-title'),
+    playlistDetailCount: document.getElementById('playlist-detail-count'),
+    btnBackPlaylists: document.getElementById('btn-back-playlists'),
+    btnPlayPlaylist: document.getElementById('btn-play-playlist'),
+    btnDeletePlaylist: document.getElementById('btn-delete-playlist'),
 
-                          rightPanel: document.getElementById('right-panel'),
-                          btnCloseRightPanel: document.getElementById('btn-close-right-panel'),
-                          btnToggleLyricsPanel: document.getElementById('btn-toggle-lyrics-panel'),
-                          btnLyricsMode: document.getElementById('btn-lyrics-mode'),
-                          coverContainer: document.getElementById('cover-container'),
-                          rightPanelArtworkBox: document.getElementById('right-panel-artwork-box'),
-                          rightPanelCover: document.getElementById('right-panel-cover'),
-                          rightPanelFallback: document.getElementById('right-panel-fallback'),
-                          rightPanelTitle: document.getElementById('right-panel-title'),
-                          rightPanelArtist: document.getElementById('right-panel-artist'),
-                          lyricsStatus: document.getElementById('lyrics-status'),
-                          lyricsContainer: document.getElementById('lyrics-container'),
-                          lyricsHint: document.getElementById('lyrics-hint'),
-                          btnTranslateLyrics: document.getElementById('btn-translate-lyrics'),
-                          btnTrEnabled: document.getElementById('btn-tr-enabled'),
-                          selectTrLang: document.getElementById('select-tr-lang'),
-                          btnTrAuto: document.getElementById('btn-tr-auto'),
-                          btnTvKaraoke: document.getElementById('btn-tv-karaoke'),
-                          tvKaraoke: document.getElementById('tv-karaoke'),
-                          tvBg: document.getElementById('tv-bg'),
-                          tvCover: document.getElementById('tv-cover'),
-                          tvKaraokeContent: document.getElementById('tv-karaoke-content'),
-                          tvKaraokeClose: document.getElementById('btn-close-tv-karaoke'),
-                          tvKaraokeTitle: document.getElementById('tv-karaoke-title'),
-                          tvKaraokeArtist: document.getElementById('tv-karaoke-artist'),
-                          tvkTimeCurrent: document.getElementById('tvk-time-current'),
-                          tvkTimeDuration: document.getElementById('tvk-time-duration'),
-                          tvkSeekSlider: document.getElementById('tvk-seek-slider'),
+    rightPanel: document.getElementById('right-panel'),
+    btnCloseRightPanel: document.getElementById('btn-close-right-panel'),
+    btnToggleLyricsPanel: document.getElementById('btn-toggle-lyrics-panel'),
+    btnLyricsMode: document.getElementById('btn-lyrics-mode'),
+    coverContainer: document.getElementById('cover-container'),
+    rightPanelArtworkBox: document.getElementById('right-panel-artwork-box'),
+    rightPanelCover: document.getElementById('right-panel-cover'),
+    rightPanelFallback: document.getElementById('right-panel-fallback'),
+    rightPanelTitle: document.getElementById('right-panel-title'),
+    rightPanelArtist: document.getElementById('right-panel-artist'),
+    lyricsStatus: document.getElementById('lyrics-status'),
+    lyricsContainer: document.getElementById('lyrics-container'),
+    lyricsHint: document.getElementById('lyrics-hint'),
+    btnTranslateLyrics: document.getElementById('btn-translate-lyrics'),
+    btnTrEnabled: document.getElementById('btn-tr-enabled'),
+    selectTrLang: document.getElementById('select-tr-lang'),
+    btnTrAuto: document.getElementById('btn-tr-auto'),
+    btnTvKaraoke: document.getElementById('btn-tv-karaoke'),
+    tvKaraoke: document.getElementById('tv-karaoke'),
+    tvBg: document.getElementById('tv-bg'),
+    tvCover: document.getElementById('tv-cover'),
+    tvKaraokeContent: document.getElementById('tv-karaoke-content'),
+    tvKaraokeClose: document.getElementById('btn-close-tv-karaoke'),
+    tvKaraokeTitle: document.getElementById('tv-karaoke-title'),
+    tvKaraokeArtist: document.getElementById('tv-karaoke-artist'),
+    tvkTimeCurrent: document.getElementById('tvk-time-current'),
+    tvkTimeDuration: document.getElementById('tvk-time-duration'),
+    tvkSeekSlider: document.getElementById('tvk-seek-slider'),
 
-                          playbar: document.getElementById('playbar'),
-                          playbarArtwork: document.getElementById('playbar-artwork'),
-                          artworkFallback: document.getElementById('artwork-fallback'),
-                          playbarTitle: document.getElementById('playbar-title'),
-                          playbarArtist: document.getElementById('playbar-artist'),
-                          btnToggleFav: document.getElementById('btn-toggle-fav'),
-                          favIcon: document.getElementById('fav-icon'),
-                          btnShuffle: document.getElementById('btn-shuffle'),
-                          btnPrev: document.getElementById('btn-prev'),
-                          btnPlayPause: document.getElementById('btn-play-pause'),
-                          playIcon: document.getElementById('play-icon'),
-                          pauseIcon: document.getElementById('pause-icon'),
-                          playbarSpinner: document.getElementById('playbar-spinner'),
-                          btnNext: document.getElementById('btn-next'),
-                          btnRepeat: document.getElementById('btn-repeat'),
+    playbar: document.getElementById('playbar'),
+    playbarArtwork: document.getElementById('playbar-artwork'),
+    artworkFallback: document.getElementById('artwork-fallback'),
+    playbarTitle: document.getElementById('playbar-title'),
+    playbarArtist: document.getElementById('playbar-artist'),
+    btnToggleFav: document.getElementById('btn-toggle-fav'),
+    favIcon: document.getElementById('fav-icon'),
+    btnShuffle: document.getElementById('btn-shuffle'),
+    btnPrev: document.getElementById('btn-prev'),
+    btnPlayPause: document.getElementById('btn-play-pause'),
+    playIcon: document.getElementById('play-icon'),
+    pauseIcon: document.getElementById('pause-icon'),
+    playbarSpinner: document.getElementById('playbar-spinner'),
+    btnNext: document.getElementById('btn-next'),
+    btnRepeat: document.getElementById('btn-repeat'),
 
-                          timeCurrent: document.getElementById('time-current'),
-                          timeDuration: document.getElementById('time-duration'),
-                          scrubberTrack: document.getElementById('scrubber-track'),
+    timeCurrent: document.getElementById('time-current'),
+    timeDuration: document.getElementById('time-duration'),
+    scrubberTrack: document.getElementById('scrubber-track'),
 
-                          visualizerCanvas: document.getElementById('visualizer-canvas'),
-                          btnOpenSettings: document.getElementById('btn-open-settings'),
-                          btnOpenVisualSettings: document.getElementById('btn-open-visual-settings'),
-                          settingsModifiedDot: document.getElementById('settings-modified-dot'),
-                          btnVolumeMute: document.getElementById('btn-volume-mute'),
-                          volumeIcon: document.getElementById('volume-icon'),
-                          volumeMutedIcon: document.getElementById('volume-muted-icon'),
-                          volumeSlider: document.getElementById('volume-slider'),
+    visualizerCanvas: document.getElementById('visualizer-canvas'),
+    btnOpenSettings: document.getElementById('btn-open-settings'),
+    btnOpenVisualSettings: document.getElementById('btn-open-visual-settings'),
+    settingsModifiedDot: document.getElementById('settings-modified-dot'),
+    btnVolumeMute: document.getElementById('btn-volume-mute'),
+    volumeIcon: document.getElementById('volume-icon'),
+    volumeMutedIcon: document.getElementById('volume-muted-icon'),
+    volumeSlider: document.getElementById('volume-slider'),
 
-                          downloadModal: document.getElementById('download-modal'),
-                          btnCloseDownloadModal: document.getElementById('btn-close-download-modal'),
-                          btnCancelDownload: document.getElementById('btn-cancel-download'),
-                          btnConfirmDownload: document.getElementById('btn-confirm-download'),
-                          downloadSpinner: document.getElementById('download-spinner'),
-                          downloadBtnText: document.getElementById('download-btn-text'),
-                          downloadPreviewThumb: document.getElementById('download-preview-thumb'),
-                          downloadPreviewFallback: document.getElementById('download-preview-fallback'),
-                          downloadPreviewTitle: document.getElementById('download-preview-title'),
-                          downloadPreviewArtist: document.getElementById('download-preview-artist'),
-                          btnPlaybarMore: document.getElementById('btn-playbar-more'),
-                          btnPlaybarShare: document.getElementById('btn-playbar-share'),
+    downloadModal: document.getElementById('download-modal'),
+    btnCloseDownloadModal: document.getElementById('btn-close-download-modal'),
+    btnCancelDownload: document.getElementById('btn-cancel-download'),
+    btnConfirmDownload: document.getElementById('btn-confirm-download'),
+    downloadSpinner: document.getElementById('download-spinner'),
+    downloadBtnText: document.getElementById('download-btn-text'),
+    downloadPreviewThumb: document.getElementById('download-preview-thumb'),
+    downloadPreviewFallback: document.getElementById('download-preview-fallback'),
+    downloadPreviewTitle: document.getElementById('download-preview-title'),
+    downloadPreviewArtist: document.getElementById('download-preview-artist'),
+    btnPlaybarMore: document.getElementById('btn-playbar-more'),
+    btnPlaybarShare: document.getElementById('btn-playbar-share'),
 
-                          audioSettingsModal: document.getElementById('audio-settings-modal'),
-                          btnCloseSettings: document.getElementById('btn-close-settings'),
-                          sleepTimerStatus: document.getElementById('sleep-timer-status'),
+    audioSettingsModal: document.getElementById('audio-settings-modal'),
+    btnCloseSettings: document.getElementById('btn-close-settings'),
+    sleepTimerStatus: document.getElementById('sleep-timer-status'),
 
-                          btnToggleHqAudio: document.getElementById('toggle-hq-audio'),
-                          hqEnhancerCard: document.querySelector('.hq-enhancer-card'),
-                          hqPanelWrapper: document.getElementById('hq-panel-wrapper'),
-                          hqEngineSelect: document.getElementById('hq-engine-select'),
-                          sliderHqVocal: document.getElementById('slider-hq-vocal'),
-                          valHqVocal: document.getElementById('val-hq-vocal'),
-                          sliderHqAir: document.getElementById('slider-hq-air'),
-                          valHqAir: document.getElementById('val-hq-air'),
-                          sliderHqBass: document.getElementById('slider-hq-bass'),
-                          valHqBass: document.getElementById('val-hq-bass'),
-                          hqPresetChips: document.querySelectorAll('.hq-preset-chip'),
+    btnToggleHqAudio: document.getElementById('toggle-hq-audio'),
+    hqEnhancerCard: document.querySelector('.hq-enhancer-card'),
+    hqPanelWrapper: document.getElementById('hq-panel-wrapper'),
+    hqEngineSelect: document.getElementById('hq-engine-select'),
+    sliderHqVocal: document.getElementById('slider-hq-vocal'),
+    valHqVocal: document.getElementById('val-hq-vocal'),
+    sliderHqAir: document.getElementById('slider-hq-air'),
+    valHqAir: document.getElementById('val-hq-air'),
+    sliderHqBass: document.getElementById('slider-hq-bass'),
+    valHqBass: document.getElementById('val-hq-bass'),
+    hqPresetChips: document.querySelectorAll('.hq-preset-chip'),
 
-                          sliderSpeed: document.getElementById('slider-speed'),
-                          valSpeed: document.getElementById('val-speed'),
-                          sliderSpeedPitch: document.getElementById('slider-speed-pitch'),
-                          valSpeedPitch: document.getElementById('val-speed-pitch'),
-                          sliderPitch: document.getElementById('slider-pitch'),
-                          valPitch: document.getElementById('val-pitch'),
-                          sliderReverb: document.getElementById('slider-reverb'),
-                          valReverb: document.getElementById('val-reverb'),
-                          sliderDistortion: document.getElementById('slider-distortion'),
-                          valDistortion: document.getElementById('val-distortion'),
-                          sliderGain: document.getElementById('slider-gain'),
-                          valGain: document.getElementById('val-gain'),
-                          sliderEcho: document.getElementById('slider-echo'),
-                          valEcho: document.getElementById('val-echo'),
-                          sliderEqLow: document.getElementById('slider-eq-low'),
-                          valEqLow: document.getElementById('val-eq-low'),
-                          sliderEqMid: document.getElementById('slider-eq-mid'),
-                          valEqMid: document.getElementById('val-eq-mid'),
-                          sliderEqHigh: document.getElementById('slider-eq-high'),
-                          valEqHigh: document.getElementById('val-eq-high'),
-                          eqBands: document.getElementById('eq-bands'),
-                          btnResetEqBands: document.getElementById('btn-reset-eq-bands'),
+    sliderSpeed: document.getElementById('slider-speed'),
+    valSpeed: document.getElementById('val-speed'),
+    sliderSpeedPitch: document.getElementById('slider-speed-pitch'),
+    valSpeedPitch: document.getElementById('val-speed-pitch'),
+    sliderPitch: document.getElementById('slider-pitch'),
+    valPitch: document.getElementById('val-pitch'),
+    sliderReverb: document.getElementById('slider-reverb'),
+    valReverb: document.getElementById('val-reverb'),
+    sliderDistortion: document.getElementById('slider-distortion'),
+    valDistortion: document.getElementById('val-distortion'),
+    sliderGain: document.getElementById('slider-gain'),
+    valGain: document.getElementById('val-gain'),
+    sliderEcho: document.getElementById('slider-echo'),
+    valEcho: document.getElementById('val-echo'),
+    sliderEqLow: document.getElementById('slider-eq-low'),
+    valEqLow: document.getElementById('val-eq-low'),
+    sliderEqMid: document.getElementById('slider-eq-mid'),
+    valEqMid: document.getElementById('val-eq-mid'),
+    sliderEqHigh: document.getElementById('slider-eq-high'),
+    valEqHigh: document.getElementById('val-eq-high'),
+    eqBands: document.getElementById('eq-bands'),
+    btnResetEqBands: document.getElementById('btn-reset-eq-bands'),
 
-                          sliderScale: document.getElementById('settings-slider-scale') || document.getElementById('slider-scale'),
-                          valScale: document.getElementById('settings-val-scale') || document.getElementById('val-scale'),
-                          sliderFontScale: document.getElementById('slider-font-scale'),
-                          valFontScale: document.getElementById('val-font-scale'),
-                          sliderCornerRadius: document.getElementById('slider-corner-radius'),
-                          valCornerRadius: document.getElementById('val-corner-radius'),
-                          sliderUiAlpha: document.getElementById('slider-ui-alpha'),
-                          valUiAlpha: document.getElementById('val-ui-alpha'),
-                          btnResetUiAlpha: document.getElementById('btn-reset-ui-alpha'),
-                          sliderTextAlpha: document.getElementById('slider-text-alpha'),
-                          valTextAlpha: document.getElementById('val-text-alpha'),
-                          btnResetTextAlpha: document.getElementById('btn-reset-text-alpha'),
-                          themeModeBtns: document.querySelectorAll('.theme-mode-btn'),
-                          themeSwatches: document.querySelectorAll('.theme-swatch'),
-                          customColorInput: document.getElementById('settings-custom-color-input'),
-                          sliderHue: document.getElementById('slider-theme-hue'),
-                          valHue: document.getElementById('val-theme-hue'),
-                          sliderIntensity: document.getElementById('slider-theme-intensity'),
-                          valIntensity: document.getElementById('val-theme-intensity'),
-                          sliderBrightness: document.getElementById('slider-theme-brightness'),
-                          valBrightness: document.getElementById('val-theme-brightness'),
+    sliderScale: document.getElementById('settings-slider-scale') || document.getElementById('slider-scale'),
+    valScale: document.getElementById('settings-val-scale') || document.getElementById('val-scale'),
+    sliderFontScale: document.getElementById('slider-font-scale'),
+    valFontScale: document.getElementById('val-font-scale'),
+    sliderCornerRadius: document.getElementById('slider-corner-radius'),
+    valCornerRadius: document.getElementById('val-corner-radius'),
+    sliderUiAlpha: document.getElementById('slider-ui-alpha'),
+    valUiAlpha: document.getElementById('val-ui-alpha'),
+    btnResetUiAlpha: document.getElementById('btn-reset-ui-alpha'),
+    sliderTextAlpha: document.getElementById('slider-text-alpha'),
+    valTextAlpha: document.getElementById('val-text-alpha'),
+    btnResetTextAlpha: document.getElementById('btn-reset-text-alpha'),
+    themeModeBtns: document.querySelectorAll('.theme-mode-btn'),
+    themeSwatches: document.querySelectorAll('.theme-swatch'),
+    customColorInput: document.getElementById('settings-custom-color-input'),
+    sliderHue: document.getElementById('slider-theme-hue'),
+    valHue: document.getElementById('val-theme-hue'),
+    sliderIntensity: document.getElementById('slider-theme-intensity'),
+    valIntensity: document.getElementById('val-theme-intensity'),
+    sliderBrightness: document.getElementById('slider-theme-brightness'),
+    valBrightness: document.getElementById('val-theme-brightness'),
 
-                          visualSettingsModal: document.getElementById('visual-settings-modal'),
-                          btnCloseVisualSettings: document.getElementById('btn-close-visual-settings'),
-                          btnResetVfx: document.getElementById('btn-reset-vfx'),
+    visualSettingsModal: document.getElementById('visual-settings-modal'),
+    btnCloseVisualSettings: document.getElementById('btn-close-visual-settings'),
+    btnResetVfx: document.getElementById('btn-reset-vfx'),
 
-                          createPlaylistModal: document.getElementById('create-playlist-modal'),
-                          newPlaylistInput: document.getElementById('new-playlist-input'),
-                          btnCancelNewPlaylist: document.getElementById('btn-cancel-new-playlist'),
-                          btnConfirmNewPlaylist: document.getElementById('btn-confirm-new-playlist'),
+    createPlaylistModal: document.getElementById('create-playlist-modal'),
+    newPlaylistInput: document.getElementById('new-playlist-input'),
+    btnCancelNewPlaylist: document.getElementById('btn-cancel-new-playlist'),
+    btnConfirmNewPlaylist: document.getElementById('btn-confirm-new-playlist'),
 
-                          addToPlaylistModal: document.getElementById('add-to-playlist-modal'),
-                          playlistPickList: document.getElementById('playlist-pick-list'),
-                          btnCancelAddPlaylist: document.getElementById('btn-cancel-add-playlist'),
-                          linkImportModal: document.getElementById('link-import-modal'),
+    addToPlaylistModal: document.getElementById('add-to-playlist-modal'),
+    playlistPickList: document.getElementById('playlist-pick-list'),
+    btnCancelAddPlaylist: document.getElementById('btn-cancel-add-playlist'),
+    linkImportModal: document.getElementById('link-import-modal'),
 
-                          nativeAudio: document.getElementById('native-audio'),
-                          trackLoadingOverlay: document.getElementById('track-loading-overlay'),
-                          trackLoadingTitle: document.getElementById('track-loading-title'),
-                          trackLoadingSub: document.getElementById('track-loading-sub'),
+    nativeAudio: document.getElementById('native-audio'),
+    trackLoadingOverlay: document.getElementById('track-loading-overlay'),
+    trackLoadingTitle: document.getElementById('track-loading-title'),
+    trackLoadingSub: document.getElementById('track-loading-sub'),
 
-                          btnAddCustomLyrics: document.getElementById('btn-add-custom-lyrics'),
-                          btnSyncLyrics: document.getElementById('btn-sync-lyrics'),
-                          customLyricsModal: document.getElementById('custom-lyrics-modal'),
-                          customLyricsTextarea: document.getElementById('custom-lyrics-textarea'),
-                          customLyricsTrackTitle: document.getElementById('custom-lyrics-track-title'),
-                          customLyricsTrackArtist: document.getElementById('custom-lyrics-track-artist'),
-                          btnCloseCustomLyrics: document.getElementById('btn-close-custom-lyrics'),
-                          btnCancelCustomLyrics: document.getElementById('btn-cancel-custom-lyrics'),
-                          btnSaveCustomLyrics: document.getElementById('btn-save-custom-lyrics'),
-                          syncModeOverlay: document.getElementById('sync-mode-overlay'),
-                          syncModeLyrics: document.getElementById('sync-mode-lyrics'),
-                          syncProgressText: document.getElementById('sync-progress-text'),
-                          btnRestartSync: document.getElementById('btn-restart-sync'),
-                          btnSaveSync: document.getElementById('btn-save-sync'),
-                          btnCancelSync: document.getElementById('btn-cancel-sync'),
+    btnAddCustomLyrics: document.getElementById('btn-add-custom-lyrics'),
+    btnSyncLyrics: document.getElementById('btn-sync-lyrics'),
+    customLyricsModal: document.getElementById('custom-lyrics-modal'),
+    customLyricsTextarea: document.getElementById('custom-lyrics-textarea'),
+    customLyricsTrackTitle: document.getElementById('custom-lyrics-track-title'),
+    customLyricsTrackArtist: document.getElementById('custom-lyrics-track-artist'),
+    btnCloseCustomLyrics: document.getElementById('btn-close-custom-lyrics'),
+    btnCancelCustomLyrics: document.getElementById('btn-cancel-custom-lyrics'),
+    btnSaveCustomLyrics: document.getElementById('btn-save-custom-lyrics'),
+    syncModeOverlay: document.getElementById('sync-mode-overlay'),
+    syncModeLyrics: document.getElementById('sync-mode-lyrics'),
+    syncProgressText: document.getElementById('sync-progress-text'),
+    btnRestartSync: document.getElementById('btn-restart-sync'),
+    btnSaveSync: document.getElementById('btn-save-sync'),
+    btnCancelSync: document.getElementById('btn-cancel-sync'),
 
-                          btnEditCurrentTrack: document.getElementById('btn-edit-current-track'),
-                          renameTrackModal: document.getElementById('rename-track-modal'),
-                          inputRenameTitle: document.getElementById('rename-track-title'),
-                          inputRenameArtist: document.getElementById('rename-track-artist'),
-                          renameTitleInput: document.getElementById('rename-track-title'),
-                          renameArtistInput: document.getElementById('rename-track-artist'),
-                          btnCancelRenameTrack: document.getElementById('btn-cancel-rename-track'),
-                          btnConfirmRenameTrack: document.getElementById('btn-confirm-rename-track'),
+    btnEditCurrentTrack: document.getElementById('btn-edit-current-track'),
+    renameTrackModal: document.getElementById('rename-track-modal'),
+    inputRenameTitle: document.getElementById('rename-track-title'),
+    inputRenameArtist: document.getElementById('rename-track-artist'),
+    renameTitleInput: document.getElementById('rename-track-title'),
+    renameArtistInput: document.getElementById('rename-track-artist'),
+    btnCancelRenameTrack: document.getElementById('btn-cancel-rename-track'),
+    btnConfirmRenameTrack: document.getElementById('btn-confirm-rename-track'),
 
-                          btnRefreshVibe: document.getElementById('btn-refresh-vibe')
+    btnRefreshVibe: document.getElementById('btn-refresh-vibe')
   };
   if (el.nativeAudio) el.nativeAudio.preload = 'auto';
 
@@ -2592,16 +2592,16 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   function initAudioContext() {
     audioEngine.init(el.nativeAudio);
-    
+
     if (audioEngine.ctx && audioEngine.ctx.state === 'suspended') {
-      audioEngine.ctx.resume().catch(() => {});
+      audioEngine.ctx.resume().catch(() => { });
     }
-    
+
     audioEngine.setHqEnabled(state.hqEnabled);
     audioEngine.setHqSettings(state.hqSettings);
     audioEngine.setAudioSettings(state.audioSettings);
     audioEngine.setVolume(state.volume, state.isMuted);
-    
+
     startVisualizers();
   }
 
@@ -2634,13 +2634,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     audioEngine.setHqSettings(state.hqSettings);
     persistSoundSettings();
   }
-  
+
   function applyAudioSettings() {
     audioEngine.setAudioSettings(state.audioSettings);
     audioEngine.setVolume(state.volume, state.isMuted);
     audioEngine.applySettings(el.nativeAudio);
     persistSoundSettings();
-    
+
     if (el.settingsModifiedDot) {
       if (audioEngine.isModified()) {
         el.settingsModifiedDot.classList.remove('hidden');
@@ -2920,7 +2920,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
           }
         }
-      } catch (_) {}
+      } catch (_) { }
       const ccPlayhead = document.getElementById('cc-playhead');
       if (ccPlayhead && typeof trackToDownload !== 'undefined' && trackToDownload && isSameTrack(state.currentTrack, trackToDownload) && typeof trimDraft !== 'undefined' && trimDraft && trimDraft.dur > 0) {
         const cur = el.nativeAudio ? (el.nativeAudio.currentTime || 0) : 0;
@@ -3013,7 +3013,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
               }
             }
-          } catch (_) {}
+          } catch (_) { }
 
           try {
             if (tvkCtx && tvkCanvas && isTvkVisualizerVisible) {
@@ -3113,7 +3113,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
               }
             }
-          } catch (_) {}
+          } catch (_) { }
 
           try {
             if (barBgCtx && barBgCanvas && isBehindVizVisible && !state.isTvKaraokeOpen) {
@@ -3207,25 +3207,25 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
               }
             }
-          } catch (_) {}
+          } catch (_) { }
         }
       } else {
         if (audioEngine && audioEngine.setAnalyserEnabled && !needBassPulse && !activeGap) audioEngine.setAnalyserEnabled(false);
         if (el.coverContainer && el.coverContainer.style.transform) el.coverContainer.style.transform = '';
-        try { if (miniCtx && miniCanvas) miniCtx.clearRect(0, 0, 60, 24); } catch (_) {}
+        try { if (miniCtx && miniCanvas) miniCtx.clearRect(0, 0, 60, 24); } catch (_) { }
         try {
           if (tvkCtx && tvkCanvas) {
             const w = cachedTvkWidth || (tvkCanvas.width / (window.devicePixelRatio || 1)) || 500;
             const h = cachedTvkHeight || (tvkCanvas.height / (window.devicePixelRatio || 1)) || 64;
             tvkCtx.clearRect(0, 0, w, h);
           }
-        } catch (_) {}
+        } catch (_) { }
         try {
           if (barBgCtx && barBgCanvas) {
             const bw = Math.max(200, (barBgCanvas.width / (window.devicePixelRatio || 1)) || 200);
             barBgCtx.clearRect(0, 0, bw, 36);
           }
-        } catch (_) {}
+        } catch (_) { }
       }
 
       let scrubberCanvas = document.getElementById('squiggly-canvas');
@@ -3564,7 +3564,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (badge) badge.textContent = isEnabled ? 'on' : 'off';
       if (btn) {
         btn.classList.toggle('active', !!isEnabled);
-        
+
       }
     });
   }
@@ -3806,7 +3806,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       };
       if (vid.src !== mediaToUse) {
         vid.src = mediaToUse;
-        vid.play().catch(() => {});
+        vid.play().catch(() => { });
       }
       banner.style.opacity = '1';
       if (state.isTvKaraokeOpen) syncTvBanner();
@@ -3874,7 +3874,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
       if (vid.src !== mediaToUse) {
         vid.src = mediaToUse;
-        vid.play().catch(() => {});
+        vid.play().catch(() => { });
       }
       banner.style.opacity = '1';
       return;
@@ -3926,7 +3926,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     } else {
       all[cid] = { start: Math.round(startSec * 10) / 10, end: Math.round(endSec * 10) / 10, updatedAt: Date.now() };
     }
-    try { localStorage.setItem('moodex_track_trims', JSON.stringify(all)); } catch (_) {}
+    try { localStorage.setItem('moodex_track_trims', JSON.stringify(all)); } catch (_) { }
   }
 
   function getTrackArt(t) {
@@ -3941,7 +3941,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     let all = {};
     try {
       all = JSON.parse(localStorage.getItem('moodex_track_art') || '{}');
-    } catch (e) {}
+    } catch (e) { }
     const id = getTrackCanonicalId(t);
     if (!id) return;
     const cur = { ...(all[id] || {}), ...patch };
@@ -3955,7 +3955,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!canonicalId) return;
     const all = getTrackRenames();
     all[canonicalId] = { title, artist, updatedAt: Date.now() };
-    try { localStorage.setItem('moodex_track_renames', JSON.stringify(all)); } catch (_) {}
+    try { localStorage.setItem('moodex_track_renames', JSON.stringify(all)); } catch (_) { }
   }
   function applyTrackRenames(t) {
     if (!t) return t;
@@ -4094,7 +4094,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const statusEl = document.getElementById('lastfm-status-label');
         if (statusEl) statusEl.textContent = `Now playing: ${meta.artist} — ${meta.title} (@${lastfmState.username})`;
       }
-    } catch (_) {}
+    } catch (_) { }
   }
 
   async function sendLastFmScrobble(track, timestamp) {
@@ -4122,7 +4122,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const statusEl = document.getElementById('lastfm-status-label');
         if (statusEl) statusEl.textContent = `Scrobbled: ${meta.artist} — ${meta.title} (@${lastfmState.username})`;
       }
-    } catch (_) {}
+    } catch (_) { }
   }
 
   function onLastFmTrackStart(track) {
@@ -4191,7 +4191,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (data && data.success && data.streamUrl) {
           nextTrack._preloadedStreamUrl = data.streamUrl;
         }
-      } catch (_) {}
+      } catch (_) { }
     }
   }
 
@@ -4213,7 +4213,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (typeof queueList === "number") { startIndex = queueList; queueList = state.queue; }
     if (!track || !el.nativeAudio) return;
     if (el.nativeAudio && !el.nativeAudio.paused) {
-      try { el.nativeAudio.pause(); } catch (_) {}
+      try { el.nativeAudio.pause(); } catch (_) { }
     }
     resetLevelWatcher();
     vizPrev = null;
@@ -4244,10 +4244,10 @@ document.addEventListener('DOMContentLoaded', async () => {
       el.nativeAudio.pause();
       el.nativeAudio.removeAttribute('src');
       el.nativeAudio.load();
-    } catch (e) {}
+    } catch (e) { }
 
     if (hlsInstance) {
-      try { hlsInstance.destroy(); } catch (e) {}
+      try { hlsInstance.destroy(); } catch (e) { }
       hlsInstance = null;
     }
 
@@ -4287,7 +4287,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     state.currentAbortController = new AbortController();
     const signal = state.currentAbortController.signal;
     const fetchAbortTimeout = setTimeout(() => {
-      try { state.currentAbortController?.abort(); } catch (_) {}
+      try { state.currentAbortController?.abort(); } catch (_) { }
     }, 20000);
 
     state.currentTrack = track;
@@ -4322,7 +4322,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     track.playedAt = Date.now();
     // Tally for the Wrapped view. state.history is capped and de-duplicated,
     // so it cannot answer "how many times", which is what Wrapped reports on.
-    try { recordPlayStat(track); } catch (e) {}
+    try { recordPlayStat(track); } catch (e) { }
     state.history = state.history.filter(t => !isSameTrack(t, track));
     state.history.unshift(track);
     if (state.history.length > 100) state.history.pop();
@@ -4344,7 +4344,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
           }
         })
-        .catch(() => {});
+        .catch(() => { });
     }
 
     loadSyncedLyrics(track.title, track.artist, currentToken);
@@ -4353,7 +4353,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (track._preloadedStreamUrl) {
         if (currentToken !== state.loadToken) return;
         if (hlsInstance) {
-          try { hlsInstance.destroy(); } catch (_) {}
+          try { hlsInstance.destroy(); } catch (_) { }
           hlsInstance = null;
         }
         el.nativeAudio.preload = 'auto';
@@ -4597,7 +4597,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   [lyricsSessionCache, wordsSessionCache].forEach(m => {
     const origSet = m.set.bind(m);
-    m.set = function(k, v) {
+    m.set = function (k, v) {
       const res = origSet(k, v);
       boundMap(m, 30);
       return res;
@@ -5502,8 +5502,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   window.applyI18n = applyI18n;
 
   if (savedUiLang !== 'en') {
-    setTimeout(() => applyI18n(savedUiLang).catch(() => {}), 4000);
-    setTimeout(() => applyI18n(savedUiLang).catch(() => {}), 12000);
+    setTimeout(() => applyI18n(savedUiLang).catch(() => { }), 4000);
+    setTimeout(() => applyI18n(savedUiLang).catch(() => { }), 12000);
   }
 
   let i18nApplyTimer = null;
@@ -5513,7 +5513,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (i18nApplyTimer) clearTimeout(i18nApplyTimer);
     i18nApplyTimer = setTimeout(() => {
       i18nApplyTimer = null;
-      applyI18n(lang).catch(() => {});
+      applyI18n(lang).catch(() => { });
     }, 600);
   }
   new MutationObserver(scheduleI18nApply).observe(document.body, { childList: true, subtree: true });
@@ -6120,7 +6120,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       vid.playsInline = true;
       vid.src = bannerSrc;
       vid.onloadeddata = () => {
-        vid.play().catch(() => {});
+        vid.play().catch(() => { });
         activateNext();
       };
       vid.onerror = () => activateNext();
@@ -6171,7 +6171,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   [tvkPaletteCache].forEach(m => {
     const origSet = m.set.bind(m);
-    m.set = function(k, v) {
+    m.set = function (k, v) {
       const res = origSet(k, v);
       boundMap(m, 30);
       return res;
@@ -6310,13 +6310,13 @@ document.addEventListener('DOMContentLoaded', async () => {
               val.canvas.width = 1;
               val.canvas.height = 1;
               val.canvas = null;
-            } catch (_) {}
+            } catch (_) { }
           }
           if (val && typeof val.getContext === 'function') {
             try {
               val.width = 1;
               val.height = 1;
-            } catch (_) {}
+            } catch (_) { }
           }
           tvkBakedCoverCache.delete(key);
         }
@@ -6456,7 +6456,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (info && typeof info.battery === 'number') {
           batteryLevel = info.battery;
         }
-      } catch (e) {}
+      } catch (e) { }
     }
 
     if (!deviceName) {
@@ -6471,7 +6471,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             batteryLevel = info.battery;
           }
         }
-      } catch (e) {}
+      } catch (e) { }
     }
 
     if (!deviceName && !window.electronAPI?.getAudioOutputInfo && navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
@@ -6494,7 +6494,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (label && label.toLowerCase() !== 'default') {
           deviceName = label;
         }
-      } catch (e) {}
+      } catch (e) { }
     }
 
     const finalName = t(deviceName || 'Default output');
@@ -6723,14 +6723,14 @@ document.addEventListener('DOMContentLoaded', async () => {
           speed: Number(parsed.speed) || TVK_DEFAULTS.speed
         };
       }
-    } catch (_) {}
+    } catch (_) { }
     return { ...TVK_DEFAULTS };
   }
 
   function saveTvk(settings) {
     try {
       localStorage.setItem('moodex_tvk', JSON.stringify(settings));
-    } catch (_) {}
+    } catch (_) { }
   }
 
   function updateTvkVisualizerSetting(enabled) {
@@ -7211,11 +7211,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
       const res = await fetch(
         `http://127.0.0.1:${state.serverPort}/api/save-custom-lyrics?title=${encodeURIComponent(title)}&artist=${encodeURIComponent(artist)}`,
-                              {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ lyrics: text })
-                              }
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ lyrics: text })
+        }
       );
       const data = await res.json();
       if (!data.success) throw new Error(data.error || 'Save failed');
@@ -7461,13 +7461,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         try {
           audioEngine.fadeGain.gain.cancelScheduledValues(audioEngine.ctx.currentTime);
           audioEngine.fadeGain.gain.setValueAtTime(0, audioEngine.ctx.currentTime);
-        } catch (e) {}
+        } catch (e) { }
       }
       if (audio) {
-        try { audio.pause(); } catch (e) {}
+        try { audio.pause(); } catch (e) { }
       }
       if (state.secondaryAudio) {
-        try { state.secondaryAudio.pause(); } catch (e) {}
+        try { state.secondaryAudio.pause(); } catch (e) { }
       }
       if (audioEngine && audioEngine.flushEffects) {
         audioEngine.flushEffects();
@@ -7480,16 +7480,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         const ct = audioEngine.ctx.currentTime;
         audioEngine.fadeGain.gain.cancelScheduledValues(ct);
         audioEngine.fadeGain.gain.setTargetAtTime(0, ct, 0.035);
-      } catch (e) {}
+      } catch (e) { }
     }
 
     setTimeout(() => {
       if (curToken !== smoothFadeToken) return;
       if (audio) {
-        try { audio.pause(); } catch (e) {}
+        try { audio.pause(); } catch (e) { }
       }
       if (state.secondaryAudio) {
-        try { state.secondaryAudio.pause(); } catch (e) {}
+        try { state.secondaryAudio.pause(); } catch (e) { }
       }
       if (audioEngine && audioEngine.flushEffects) {
         audioEngine.flushEffects();
@@ -7510,7 +7510,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     initAudioContext();
     if (audioEngine && audioEngine.ctx && (audioEngine.ctx.state === 'suspended' || audioEngine.ctx.state === 'interrupted')) {
-      audioEngine.ctx.resume().catch(() => {});
+      audioEngine.ctx.resume().catch(() => { });
     }
 
     if (audioEngine && audioEngine.fadeGain && audioEngine.ctx) {
@@ -7518,7 +7518,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const ct = audioEngine.ctx.currentTime;
         audioEngine.fadeGain.gain.cancelScheduledValues(ct);
         audioEngine.fadeGain.gain.setValueAtTime(1, ct);
-      } catch (_) {}
+      } catch (_) { }
     }
 
     if (el.nativeAudio) {
@@ -7797,7 +7797,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             playSmooth();
             return;
           }
-        } catch (_) {}
+        } catch (_) { }
       }
 
       cur._errorRetryStage = 0;
@@ -7823,7 +7823,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           const qUrl = nextTrack.url || '';
           const qId = nextTrack.id || '';
           const qInfoUrl = `http://127.0.0.1:${state.serverPort}/api/stream-info?url=${encodeURIComponent(qUrl)}&id=${encodeURIComponent(qId)}&platform=${nextTrack.platform || state.platform}&title=${encodeURIComponent(nextTrack.title || '')}&artist=${encodeURIComponent(nextTrack.artist || '')}&duration=${encodeURIComponent(nextTrack.duration || 0)}&thumbnail=${encodeURIComponent(nextTrack.thumbnail || '')}`;
-          fetch(qInfoUrl).catch(() => {});
+          fetch(qInfoUrl).catch(() => { });
         }
       }
     }
@@ -7849,7 +7849,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (tr && Number.isFinite(tr.end) && tr.end > (tr.start || 0) + 1.5 && el.nativeAudio.currentTime < tr.start) {
           el.nativeAudio.currentTime = tr.start;
         }
-      } catch (_) {}
+      } catch (_) { }
       const audio = el.nativeAudio;
       const metaDur = (state.currentTrack && Number.isFinite(state.currentTrack.duration) && state.currentTrack.duration > 0) ? state.currentTrack.duration : 0;
       const audioDur = (audio && Number.isFinite(audio.duration) && audio.duration > 1) ? audio.duration : 0;
@@ -7874,13 +7874,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     el.nativeAudio.addEventListener('play', () => {
-      try { onLastFmTrackStart(state.currentTrack); } catch (_) {}
+      try { onLastFmTrackStart(state.currentTrack); } catch (_) { }
       try {
         const tr = getTrackTrim(state.currentTrack);
         if (tr && Number.isFinite(tr.end) && tr.end > (tr.start || 0) + 1.5 && el.nativeAudio.currentTime < tr.start) {
           el.nativeAudio.currentTime = tr.start;
         }
-      } catch (_) {}
+      } catch (_) { }
       emitPluginEvent('play');
       if (!hasNotifiedMediaKeysActive) {
         hasNotifiedMediaKeysActive = true;
@@ -8030,7 +8030,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         preloadedTrack10sFired = true;
         preloadNextTrackStream();
       }
-      try { onLastFmTimeUpdate(); } catch (_) {}
+      try { onLastFmTimeUpdate(); } catch (_) { }
       updateMediaPositionState();
       try {
         const activeTrim = state.currentTrack ? getTrackTrim(state.currentTrack) : null;
@@ -8048,7 +8048,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
           }
         }
-      } catch (_) {}
+      } catch (_) { }
 
       const cur = (el.nativeAudio && Number.isFinite(el.nativeAudio.currentTime)) ? el.nativeAudio.currentTime : 0;
       const dur = getReliableTrackDuration();
@@ -8165,7 +8165,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       hasDrawnPausedFrame = false;
       if (!animationFrameId) startVisualizers();
       updateTvkScrubberPositionFromEvent(e);
-      try { tvkProgRowEl.setPointerCapture(e.pointerId); } catch (_) {}
+      try { tvkProgRowEl.setPointerCapture(e.pointerId); } catch (_) { }
     });
     tvkProgRowEl.addEventListener('pointermove', (e) => {
       if (!isDraggingTvkScrubber) return;
@@ -8181,7 +8181,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         updateMediaPositionState();
       }
       state.scrubberDragTargetTime = undefined;
-      try { tvkProgRowEl.releasePointerCapture(e.pointerId); } catch (_) {}
+      try { tvkProgRowEl.releasePointerCapture(e.pointerId); } catch (_) { }
     };
     tvkProgRowEl.addEventListener('pointerup', finishTvkSeek);
     tvkProgRowEl.addEventListener('pointercancel', finishTvkSeek);
@@ -8244,29 +8244,29 @@ document.addEventListener('DOMContentLoaded', async () => {
         </div>` : ''}
         `;
 
-        if (isCustom) {
-          const btnRename = chip.querySelector('.btn-rename-p');
-          const btnDelete = chip.querySelector('.btn-delete-p');
-          if (btnRename) {
-            btnRename.addEventListener('click', (e) => {
-              e.stopPropagation();
-              openRenamePresetModal(p);
-            });
-          }
-          if (btnDelete) {
-            btnDelete.addEventListener('click', (e) => {
-              e.stopPropagation();
-              openDeletePresetConfirm(p);
-            });
-          }
+      if (isCustom) {
+        const btnRename = chip.querySelector('.btn-rename-p');
+        const btnDelete = chip.querySelector('.btn-delete-p');
+        if (btnRename) {
+          btnRename.addEventListener('click', (e) => {
+            e.stopPropagation();
+            openRenamePresetModal(p);
+          });
         }
+        if (btnDelete) {
+          btnDelete.addEventListener('click', (e) => {
+            e.stopPropagation();
+            openDeletePresetConfirm(p);
+          });
+        }
+      }
 
-        chip.addEventListener('click', (e) => {
-          if (e.target.closest('.btn-delete-p') || e.target.closest('.btn-rename-p')) return;
-          applyPreset(p);
-        });
+      chip.addEventListener('click', (e) => {
+        if (e.target.closest('.btn-delete-p') || e.target.closest('.btn-rename-p')) return;
+        applyPreset(p);
+      });
 
-        el.presetsContainer.appendChild(chip);
+      el.presetsContainer.appendChild(chip);
     });
     updatePresetsFade();
   }
@@ -8434,7 +8434,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
       }
       if (typeof applySearchFilter === 'function') applySearchFilter(currentSearchFilter);
-    } catch (e) {}
+    } catch (e) { }
   }
 
   const albumResolved = new Map();
@@ -8679,7 +8679,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   function setSavedAlbums(list) {
     try {
       localStorage.setItem('moodex_saved_albums', JSON.stringify(list));
-    } catch (_) {}
+    } catch (_) { }
     updateAlbumsCount();
   }
 
@@ -9058,8 +9058,8 @@ document.addEventListener('DOMContentLoaded', async () => {
           </div>
           <div class="search-albums-row">
             ${albums.map(album => {
-              const sub = album.year ? `${escapeHtml(album.artist)} · ${escapeHtml(album.year)}` : escapeHtml(album.artist || '');
-              return `
+        const sub = album.year ? `${escapeHtml(album.artist)} · ${escapeHtml(album.year)}` : escapeHtml(album.artist || '');
+        return `
                 <div class="search-album-card" role="button" tabindex="0">
                   ${album.cover ? `<img class="search-album-cover" src="${escapeHtml(album.cover)}" alt="${escapeHtml(album.title)}" loading="lazy" onerror="this.style.display='none'" decoding="async" />` : '<div class="search-album-cover" style="display:flex;align-items:center;justify-content:center;background:var(--md-sys-color-surface-container-high);"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--md-sys-color-outline);"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg></div>'}
                   <div class="search-album-info">
@@ -9068,7 +9068,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                   </div>
                 </div>
               `;
-            }).join('')}
+      }).join('')}
           </div>
         </div>
       `;
@@ -9225,12 +9225,12 @@ document.addEventListener('DOMContentLoaded', async () => {
           if (window.electronAPI && typeof window.electronAPI.getDiagnostics === 'function') {
             diag = await window.electronAPI.getDiagnostics();
           }
-        } catch (_) {}
+        } catch (_) { }
         const fullReport = `Search Error: ${cleanErr}\nQuery: ${state.searchQuery || ''}\nPlatform: ${state.platform || ''}\n\n${diag}`.trim();
         try {
           await navigator.clipboard.writeText(fullReport);
           showToast('Copied error & diagnostics to clipboard', 'success');
-        } catch (_) {}
+        } catch (_) { }
       });
     }
   }
@@ -9390,7 +9390,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   function showShareSpinnerToast() {
     document.querySelectorAll('.moodex-share-spinner-toast').forEach(t => t.remove());
     const container = document.getElementById('toast-container');
-    if (!container) return () => {};
+    if (!container) return () => { };
     const toast = document.createElement('div');
     toast.className = 'moodex-toast info moodex-share-spinner-toast';
     toast.innerHTML = '<svg class="g-spinner" style="width:20px;height:20px;" viewBox="0 0 48 48"><circle cx="24" cy="24" r="20"/></svg>';
@@ -9413,7 +9413,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (data && data.success && data.streamUrl && !data.streamUrl.includes('.m3u8')) {
         return data.streamUrl;
       }
-    } catch (_) {}
+    } catch (_) { }
     return '';
   }
   async function executeCopyShareLink(track) {
@@ -9504,7 +9504,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   function setCtxTipCount(val) {
-    try { localStorage.setItem('moodex_ctx_tip_v2', String(val)); } catch (_) {}
+    try { localStorage.setItem('moodex_ctx_tip_v2', String(val)); } catch (_) { }
   }
 
   function ensureTrackHoverTipEl() {
@@ -9821,7 +9821,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       localStorage.setItem('moodex_local_tracks', serialized);
       localStorage.setItem('devsize_local_files', serialized);
       localStorage.setItem('moodex_local_files', serialized);
-    } catch (_) {}
+    } catch (_) { }
   }
   window.saveLocalTracks = saveLocalTracks;
 
@@ -9848,7 +9848,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     const updated = state.localTracks || state.localFiles || [];
 
-    fetch('http://127.0.0.1:' + state.serverPort + '/api/library-remove', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: tracksToRemove.map(t => t?.id).filter(Boolean), clearAll: (state.localFiles || []).length === 0 }) }).catch(() => {});
+    fetch('http://127.0.0.1:' + state.serverPort + '/api/library-remove', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: tracksToRemove.map(t => t?.id).filter(Boolean), clearAll: (state.localFiles || []).length === 0 }) }).catch(() => { });
 
     try {
       const removedBlacklist = safeJson('moodex_removed_local_paths', []);
@@ -9860,7 +9860,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       localStorage.setItem('devsize_local_files', serialized);
       localStorage.setItem('moodex_local_files', serialized);
       if (typeof saveLocalTracks === 'function') saveLocalTracks();
-    } catch (_) {}
+    } catch (_) { }
 
     if (el.localCount) el.localCount.textContent = String(updated.length);
     if (typeof updateLocalBadge === 'function') updateLocalBadge();
@@ -10062,51 +10062,51 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   function createTrackRow(track, idx, currentCanonicalId, context, tracks, container) {
-      if (track && track.artist) track.artist = stripYoutubeTopic(track.artist);
-      applyTrackRenames(track);
-      const row = document.createElement('div');
-      row.className = 'track-row';
-      row._trackData = track;
-      row.tabIndex = 0;
-      const selKey = getTrackSelectionKey(track);
-      if (state.selectedTracks && state.selectedTracks.has(selKey)) {
-        row.classList.add('track-selected');
+    if (track && track.artist) track.artist = stripYoutubeTopic(track.artist);
+    applyTrackRenames(track);
+    const row = document.createElement('div');
+    row.className = 'track-row';
+    row._trackData = track;
+    row.tabIndex = 0;
+    const selKey = getTrackSelectionKey(track);
+    if (state.selectedTracks && state.selectedTracks.has(selKey)) {
+      row.classList.add('track-selected');
+    }
+    const canonicalId = getTrackCanonicalId(track);
+    row.dataset.canonicalId = canonicalId;
+    row.dataset.trackIndex = String(idx);
+    row.dataset.trackId = track.id || '';
+    row.dataset.trackTitle = track.title || '';
+    row.dataset.trackArtist = track.artist || '';
+
+    row.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        row.click();
       }
-      const canonicalId = getTrackCanonicalId(track);
-      row.dataset.canonicalId = canonicalId;
-      row.dataset.trackIndex = String(idx);
-      row.dataset.trackId = track.id || '';
-      row.dataset.trackTitle = track.title || '';
-      row.dataset.trackArtist = track.artist || '';
+    });
 
-      row.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          row.click();
-        }
-      });
-
-      const isMatch = currentCanonicalId && canonicalId === currentCanonicalId;
-      if (isMatch) {
-        if (state.currentTrackContext === context && state.currentTrackIndexInContext >= 0) {
-          if (state.currentTrackIndexInContext === idx) {
-            row.classList.add('playing');
-          }
-        } else {
+    const isMatch = currentCanonicalId && canonicalId === currentCanonicalId;
+    if (isMatch) {
+      if (state.currentTrackContext === context && state.currentTrackIndexInContext >= 0) {
+        if (state.currentTrackIndexInContext === idx) {
           row.classList.add('playing');
         }
+      } else {
+        row.classList.add('playing');
       }
+    }
 
-      const isFav = state.favorites.some(f => isSameTrack(f, track));
-      const rowThumb = getTrackThumbUrl(track);
-      const isAlbum = context === 'album';
-      const index = (isAlbum && track.no) ? (Number(track.no) - 1) : idx;
-      const albumArtist = (track.albumArtist || '').trim().toLowerCase();
-      const trackArtist = (track.artist || '').trim().toLowerCase();
-      const showArtist = isAlbum ? (Boolean(trackArtist) && Boolean(albumArtist) && trackArtist !== albumArtist) : true;
-      const explicitTag = isTrackExplicit(track) ? '<span class="explicit-badge" title="Explicit">E</span>' : '';
+    const isFav = state.favorites.some(f => isSameTrack(f, track));
+    const rowThumb = getTrackThumbUrl(track);
+    const isAlbum = context === 'album';
+    const index = (isAlbum && track.no) ? (Number(track.no) - 1) : idx;
+    const albumArtist = (track.albumArtist || '').trim().toLowerCase();
+    const trackArtist = (track.artist || '').trim().toLowerCase();
+    const showArtist = isAlbum ? (Boolean(trackArtist) && Boolean(albumArtist) && trackArtist !== albumArtist) : true;
+    const explicitTag = isTrackExplicit(track) ? '<span class="explicit-badge" title="Explicit">E</span>' : '';
 
-      row.innerHTML = `
+    row.innerHTML = `
       <div class="track-row-num"><span class="track-num-text">${index + 1}</span><span class="tg-select-check"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></span></div>
       ${!isAlbum ? `
       <div class="track-row-thumb-wrap">
@@ -10149,186 +10149,186 @@ document.addEventListener('DOMContentLoaded', async () => {
         </div>
         `;
 
-        const artistEl = row.querySelector('.track-row-artist');
-        if (artistEl) renderClickableArtists(artistEl, track.artist);
+    const artistEl = row.querySelector('.track-row-artist');
+    if (artistEl) renderClickableArtists(artistEl, track.artist);
 
-        let prefetchTimer = null;
-        row.addEventListener('mouseenter', () => {
-          if (track.url && track.platform !== 'local') {
-            prefetchTimer = setTimeout(() => {
-              fetch(`http://127.0.0.1:${state.serverPort}/api/prefetch?url=${encodeURIComponent(track.url)}&id=${encodeURIComponent(track.id)}&platform=${track.platform || state.platform}`).catch(() => {});
-            }, 120);
-          }
-        });
-        row.addEventListener('mouseleave', () => {
-          if (prefetchTimer) {
-            clearTimeout(prefetchTimer);
-            prefetchTimer = null;
-          }
-        });
+    let prefetchTimer = null;
+    row.addEventListener('mouseenter', () => {
+      if (track.url && track.platform !== 'local') {
+        prefetchTimer = setTimeout(() => {
+          fetch(`http://127.0.0.1:${state.serverPort}/api/prefetch?url=${encodeURIComponent(track.url)}&id=${encodeURIComponent(track.id)}&platform=${track.platform || state.platform}`).catch(() => { });
+        }, 120);
+      }
+    });
+    row.addEventListener('mouseleave', () => {
+      if (prefetchTimer) {
+        clearTimeout(prefetchTimer);
+        prefetchTimer = null;
+      }
+    });
 
-        row.addEventListener('click', (e) => {
-          if (e.target.closest('.track-row-actions') || e.target.closest('.artist-link-part')) return;
-          if (e.target.classList.contains('track-row-artist')) {
-            e.stopPropagation();
-            openArtistProfile(track.artist);
-            return;
-          }
-          if (e.shiftKey || e.ctrlKey || e.metaKey || e.target.closest('.tg-select-check')) {
-            e.preventDefault();
-            e.stopPropagation();
-            if (!state.selectedTracks) state.selectedTracks = new Map();
-            if (e.shiftKey && state.lastClickedTrackRow && state.lastClickedTrackRow.parentElement && state.lastClickedTrackRow.parentElement === row.parentElement) {
-              const siblings = Array.from(row.parentElement.querySelectorAll('.track-row'));
-              const idxA = siblings.indexOf(state.lastClickedTrackRow);
-              const idxB = siblings.indexOf(row);
-              if (idxA !== -1 && idxB !== -1) {
-                const [start, end] = idxA < idxB ? [idxA, idxB] : [idxB, idxA];
-                for (let i = start; i <= end; i++) {
-                  const r = siblings[i];
-                  r.classList.add('track-selected');
-                  if (r._trackData) state.selectedTracks.set(getTrackSelectionKey(r._trackData), r._trackData);
-                }
-              }
-            } else {
-              const key = getTrackSelectionKey(track);
-              if (state.selectedTracks.has(key)) {
-                state.selectedTracks.delete(key);
-                row.classList.remove('track-selected');
-              } else {
-                state.selectedTracks.set(key, track);
-                row.classList.add('track-selected');
-              }
+    row.addEventListener('click', (e) => {
+      if (e.target.closest('.track-row-actions') || e.target.closest('.artist-link-part')) return;
+      if (e.target.classList.contains('track-row-artist')) {
+        e.stopPropagation();
+        openArtistProfile(track.artist);
+        return;
+      }
+      if (e.shiftKey || e.ctrlKey || e.metaKey || e.target.closest('.tg-select-check')) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!state.selectedTracks) state.selectedTracks = new Map();
+        if (e.shiftKey && state.lastClickedTrackRow && state.lastClickedTrackRow.parentElement && state.lastClickedTrackRow.parentElement === row.parentElement) {
+          const siblings = Array.from(row.parentElement.querySelectorAll('.track-row'));
+          const idxA = siblings.indexOf(state.lastClickedTrackRow);
+          const idxB = siblings.indexOf(row);
+          if (idxA !== -1 && idxB !== -1) {
+            const [start, end] = idxA < idxB ? [idxA, idxB] : [idxB, idxA];
+            for (let i = start; i <= end; i++) {
+              const r = siblings[i];
+              r.classList.add('track-selected');
+              if (r._trackData) state.selectedTracks.set(getTrackSelectionKey(r._trackData), r._trackData);
             }
-            state.lastClickedTrackRow = row;
-            updateBulkSelectBar();
-            return;
           }
-          state.lastClickedTrackRow = row;
-          if (typeof currentCanonicalId === 'function') {
-            currentCanonicalId(track, idx);
-            row.blur();
-            return;
+        } else {
+          const key = getTrackSelectionKey(track);
+          if (state.selectedTracks.has(key)) {
+            state.selectedTracks.delete(key);
+            row.classList.remove('track-selected');
+          } else {
+            state.selectedTracks.set(key, track);
+            row.classList.add('track-selected');
           }
-          if (context === 'search') {
-            state.isRadioQueue = false;
-            state.queue = [...tracks];
-            playTrack(track, tracks, idx, 'search');
-            row.blur();
-            return;
-          }
-          let clickIndex = idx;
-          let currentList = tracks;
-          if (context === 'favorites') {
-            currentList = sortTracksFor('favorites', state.favorites);
-            clickIndex = currentList.findIndex(t => isSameTrack(t, track));
-          } else if (context === 'playlist') {
-            const pl = state.playlists.find(p => p.id === state.currentPlaylistId);
-            if (pl && pl.tracks) {
-              currentList = sortTracksFor('playlist', pl.tracks);
-              clickIndex = currentList.findIndex(t => isSameTrack(t, track));
-            }
-          } else if (context === 'artist') {
-            const artistTracks = (state.currentArtistData && state.currentArtistData.tracks) || tracks;
-            if (artistTracks) {
-              currentList = artistTracks;
-              clickIndex = artistTracks.findIndex(t => isSameTrack(t, track));
-            }
-          } else if (context === 'queue') {
-            currentList = state.queue;
-            clickIndex = idx;
-          }
-          playTrack(track, currentList, clickIndex >= 0 ? clickIndex : idx, context);
-          row.blur();
-        });
-
-        const btnShare = row.querySelector('.btn-row-share');
-        if (btnShare) {
-          btnShare.addEventListener('click', (e) => {
-            e.stopPropagation();
-            executeCopyShareLink(track);
-          });
         }
-
-        const btnFav = row.querySelector('.btn-row-fav');
-        if (btnFav) {
-          btnFav.addEventListener('click', (e) => {
-            e.stopPropagation();
-            toggleFavoriteTrack(track);
-            const isFavNow = state.favorites.some(f => isSameTrack(f, track));
-            const svg = btnFav.querySelector('svg');
-            if (svg) svg.setAttribute('fill', isFavNow ? 'currentColor' : 'none');
-          });
+        state.lastClickedTrackRow = row;
+        updateBulkSelectBar();
+        return;
+      }
+      state.lastClickedTrackRow = row;
+      if (typeof currentCanonicalId === 'function') {
+        currentCanonicalId(track, idx);
+        row.blur();
+        return;
+      }
+      if (context === 'search') {
+        state.isRadioQueue = false;
+        state.queue = [...tracks];
+        playTrack(track, tracks, idx, 'search');
+        row.blur();
+        return;
+      }
+      let clickIndex = idx;
+      let currentList = tracks;
+      if (context === 'favorites') {
+        currentList = sortTracksFor('favorites', state.favorites);
+        clickIndex = currentList.findIndex(t => isSameTrack(t, track));
+      } else if (context === 'playlist') {
+        const pl = state.playlists.find(p => p.id === state.currentPlaylistId);
+        if (pl && pl.tracks) {
+          currentList = sortTracksFor('playlist', pl.tracks);
+          clickIndex = currentList.findIndex(t => isSameTrack(t, track));
         }
-
-        const btnArt = row.querySelector('.btn-row-art');
-        if (btnArt) {
-          btnArt.addEventListener('click', (e) => {
-            e.stopPropagation();
-            openTrackArtModal(track, btnArt);
-          });
+      } else if (context === 'artist') {
+        const artistTracks = (state.currentArtistData && state.currentArtistData.tracks) || tracks;
+        if (artistTracks) {
+          currentList = artistTracks;
+          clickIndex = artistTracks.findIndex(t => isSameTrack(t, track));
         }
+      } else if (context === 'queue') {
+        currentList = state.queue;
+        clickIndex = idx;
+      }
+      playTrack(track, currentList, clickIndex >= 0 ? clickIndex : idx, context);
+      row.blur();
+    });
 
-        const btnMore = row.querySelector('.btn-row-more');
-        if (btnMore) {
-          btnMore.addEventListener('click', (e) => {
-            e.stopPropagation();
-            openDownloadModal(track);
-          });
-        }
+    const btnShare = row.querySelector('.btn-row-share');
+    if (btnShare) {
+      btnShare.addEventListener('click', (e) => {
+        e.stopPropagation();
+        executeCopyShareLink(track);
+      });
+    }
 
-        const btnAddPl = row.querySelector('.btn-row-add-playlist');
-        if (btnAddPl) {
-          btnAddPl.addEventListener('click', (e) => {
-            e.stopPropagation();
-            openAddToPlaylistModal(track);
-          });
-        }
+    const btnFav = row.querySelector('.btn-row-fav');
+    if (btnFav) {
+      btnFav.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleFavoriteTrack(track);
+        const isFavNow = state.favorites.some(f => isSameTrack(f, track));
+        const svg = btnFav.querySelector('svg');
+        if (svg) svg.setAttribute('fill', isFavNow ? 'currentColor' : 'none');
+      });
+    }
 
-        const btnRemPl = row.querySelector('.btn-row-remove-playlist');
-        if (btnRemPl) {
-          btnRemPl.addEventListener('click', (e) => {
-            e.stopPropagation();
-            removeTrackFromCurrentPlaylist(track.id);
-          });
-        }
+    const btnArt = row.querySelector('.btn-row-art');
+    if (btnArt) {
+      btnArt.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openTrackArtModal(track, btnArt);
+      });
+    }
 
-        const btnRemLocal = row.querySelector('.btn-row-remove-local, .btn-remove-local');
-        if (btnRemLocal) {
-          btnRemLocal.addEventListener('click', (e) => {
-            e.stopPropagation();
-            removeTracksFromLocalLibrary([track]);
-          });
-        }
+    const btnMore = row.querySelector('.btn-row-more');
+    if (btnMore) {
+      btnMore.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openDownloadModal(track);
+      });
+    }
 
-        const btnRemQueue = row.querySelector('.btn-remove-from-queue');
-        if (btnRemQueue) {
-          btnRemQueue.addEventListener('click', (e) => {
-            e.stopPropagation();
-            const targetIdx = typeof row.dataset.trackIndex !== 'undefined' ? parseInt(row.dataset.trackIndex, 10) : idx;
-            removeTrackFromQueue(Number.isNaN(targetIdx) ? idx : targetIdx);
-          });
-        }
+    const btnAddPl = row.querySelector('.btn-row-add-playlist');
+    if (btnAddPl) {
+      btnAddPl.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openAddToPlaylistModal(track);
+      });
+    }
 
-        bindTrackHoverTip(row, track);
-        row.addEventListener('contextmenu', (e) => {
-          const currentIndex = typeof row.dataset.trackIndex !== 'undefined' ? parseInt(row.dataset.trackIndex, 10) : idx;
-          openTrackContextMenu(e, track, { row, index: Number.isNaN(currentIndex) ? idx : currentIndex });
-        });
+    const btnRemPl = row.querySelector('.btn-row-remove-playlist');
+    if (btnRemPl) {
+      btnRemPl.addEventListener('click', (e) => {
+        e.stopPropagation();
+        removeTrackFromCurrentPlaylist(track.id);
+      });
+    }
 
-      return row;
+    const btnRemLocal = row.querySelector('.btn-row-remove-local, .btn-remove-local');
+    if (btnRemLocal) {
+      btnRemLocal.addEventListener('click', (e) => {
+        e.stopPropagation();
+        removeTracksFromLocalLibrary([track]);
+      });
+    }
+
+    const btnRemQueue = row.querySelector('.btn-remove-from-queue');
+    if (btnRemQueue) {
+      btnRemQueue.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const targetIdx = typeof row.dataset.trackIndex !== 'undefined' ? parseInt(row.dataset.trackIndex, 10) : idx;
+        removeTrackFromQueue(Number.isNaN(targetIdx) ? idx : targetIdx);
+      });
+    }
+
+    bindTrackHoverTip(row, track);
+    row.addEventListener('contextmenu', (e) => {
+      const currentIndex = typeof row.dataset.trackIndex !== 'undefined' ? parseInt(row.dataset.trackIndex, 10) : idx;
+      openTrackContextMenu(e, track, { row, index: Number.isNaN(currentIndex) ? idx : currentIndex });
+    });
+
+    return row;
   }
 
   function renderTracks(container, tracks, context = 'search') {
     if (!container) return;
-    
+
     const scrollParent = document.querySelector('.main-content');
     if (container._vScrollHandler && scrollParent) {
       scrollParent.removeEventListener('scroll', container._vScrollHandler);
     }
-    
+
     container.innerHTML = '';
-    
+
     if (!tracks || tracks.length === 0) {
       container.style.paddingTop = '0px';
       container.style.paddingBottom = '0px';
@@ -10337,7 +10337,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         favorites: 'No favourites yet. Use the heart on a track to save it',
         playlist: 'This playlist is empty',
         local: 'Your library is empty. Add some music to get started',
-        downloads: 'Nothing downloaded yet. Streaming never saves to disk — use the download button on a track to keep a copy.'
+        downloads: 'Nothing downloaded yet.'
       };
       container.innerHTML = `<div class="empty-hint">${emptyMessages[context] || 'No tracks to show'}</div>`;
       return;
@@ -10353,36 +10353,36 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const itemHeight = 64;
     const overscan = 15;
-    
+
     function renderChunk() {
       if (!scrollParent || container._isDraggingReorder) return;
       const parentRect = scrollParent.getBoundingClientRect();
       const containerRect = container.getBoundingClientRect();
       const relativeTop = containerRect.top - parentRect.top + scrollParent.scrollTop;
-      
+
       const visibleTop = Math.max(0, scrollParent.scrollTop - relativeTop);
       let startIndex = Math.floor(visibleTop / itemHeight) - overscan;
       let endIndex = Math.ceil((visibleTop + scrollParent.clientHeight) / itemHeight) + overscan;
-      
+
       startIndex = Math.floor(startIndex / 5) * 5;
       endIndex = Math.ceil(endIndex / 5) * 5;
-      
+
       startIndex = Math.max(0, startIndex);
       endIndex = Math.min(tracks.length, endIndex);
-      
+
       if (container._lastStartIndex === startIndex && container._lastEndIndex === endIndex) return;
       container._lastStartIndex = startIndex;
       container._lastEndIndex = endIndex;
-      
+
       const currentCanonicalId = state.currentTrack ? getTrackCanonicalId(state.currentTrack) : '';
       const fragment = document.createDocumentFragment();
       for (let idx = startIndex; idx < endIndex; idx++) {
-         const track = tracks[idx];
-         const row = createTrackRow(track, idx, currentCanonicalId, context, tracks, container);
-         if (container._hasInitialRendered) row.style.animation = 'none';
-         fragment.appendChild(row);
+        const track = tracks[idx];
+        const row = createTrackRow(track, idx, currentCanonicalId, context, tracks, container);
+        if (container._hasInitialRendered) row.style.animation = 'none';
+        fragment.appendChild(row);
       }
-      
+
       container.innerHTML = '';
       container.style.paddingTop = `${startIndex * itemHeight}px`;
       container.style.paddingBottom = `${(tracks.length - endIndex) * itemHeight}px`;
@@ -10390,7 +10390,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       container._hasInitialRendered = true;
       highlightPlayingRow();
     }
-    
+
     container._vScrollHandler = () => {
       if (!container._ticking) {
         window.requestAnimationFrame(() => {
@@ -10400,11 +10400,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         container._ticking = true;
       }
     };
-    
+
     if (scrollParent) {
-       scrollParent.addEventListener('scroll', container._vScrollHandler, { passive: true });
+      scrollParent.addEventListener('scroll', container._vScrollHandler, { passive: true });
     }
-    
+
     container._hasInitialRendered = false;
     container._lastStartIndex = -1;
     container._lastEndIndex = -1;
@@ -10456,68 +10456,68 @@ document.addEventListener('DOMContentLoaded', async () => {
     return String(num);
   }
 
-const MULTI_ARTIST_EXCEPTIONS = new Set([
-  'simon & garfunkel', 'hall & oates', 'brooks & dunn', 'tegan and sara',
-  'earth, wind & fire', 'crosby, stills & nash', 'crosby, stills, nash & young',
-  'mumford & sons', 'florence + the machine', 'florence & the machine',
-  'belle & sebastian', 'belle and sebastian', 'emerson, lake & palmer',
-  'kc & the sunshine band', 'kool & the gang', 'sly & the family stone',
-  'echo & the bunnymen', 'coheed and cambria', 'angus & julia stone',
-  'above & beyond', 'chase & status', 'gnarls barkley',
-  'twenty one pilots', 'ac/dc', 't.a.t.u.', 'tylerthecreator', 'tyler, the creator'
-]);
-const FEAT_BRACKET_RE = new RegExp('\\s*[\\(\\[]\\s*(?:feat\\.?|ft\\.?|featuring|prod\\.?\\s*by)\\s+([^\\)\\]]+)[\\)\\]]', 'gi');
-const ARTIST_SEP_RE = new RegExp('(\\s+(?:feat\\.?|ft\\.?|featuring|with|vs\\.?|\\u00d7|x)\\s+|\\s*(?:&|,|;|\\/|\\+)\\s*)', 'gi');
+  const MULTI_ARTIST_EXCEPTIONS = new Set([
+    'simon & garfunkel', 'hall & oates', 'brooks & dunn', 'tegan and sara',
+    'earth, wind & fire', 'crosby, stills & nash', 'crosby, stills, nash & young',
+    'mumford & sons', 'florence + the machine', 'florence & the machine',
+    'belle & sebastian', 'belle and sebastian', 'emerson, lake & palmer',
+    'kc & the sunshine band', 'kool & the gang', 'sly & the family stone',
+    'echo & the bunnymen', 'coheed and cambria', 'angus & julia stone',
+    'above & beyond', 'chase & status', 'gnarls barkley',
+    'twenty one pilots', 'ac/dc', 't.a.t.u.', 'tylerthecreator', 'tyler, the creator'
+  ]);
+  const FEAT_BRACKET_RE = new RegExp('\\s*[\\(\\[]\\s*(?:feat\\.?|ft\\.?|featuring|prod\\.?\\s*by)\\s+([^\\)\\]]+)[\\)\\]]', 'gi');
+  const ARTIST_SEP_RE = new RegExp('(\\s+(?:feat\\.?|ft\\.?|featuring|with|vs\\.?|\\u00d7|x)\\s+|\\s*(?:&|,|;|\\/|\\+)\\s*)', 'gi');
 
-function splitArtistTokens(rawArtist) {
-  rawArtist = stripYoutubeTopic(rawArtist);
-  const str = String(rawArtist || '').trim();
-  if (!str) return [{ type: 'artist', value: 'Unknown artist' }];
-  if (MULTI_ARTIST_EXCEPTIONS.has(str.toLowerCase())) return [{ type: 'artist', value: str }];
-  const cleanStr = str.replace(FEAT_BRACKET_RE, ' feat. $1');
-  const parts = cleanStr.split(ARTIST_SEP_RE).filter(Boolean);
-  if (parts.length <= 1) return [{ type: 'artist', value: str }];
-  const tokens = [];
-  for (let i = 0; i < parts.length; i++) {
-    const p = parts[i];
-    ARTIST_SEP_RE.lastIndex = 0;
-    if (ARTIST_SEP_RE.test(p)) {
+  function splitArtistTokens(rawArtist) {
+    rawArtist = stripYoutubeTopic(rawArtist);
+    const str = String(rawArtist || '').trim();
+    if (!str) return [{ type: 'artist', value: 'Unknown artist' }];
+    if (MULTI_ARTIST_EXCEPTIONS.has(str.toLowerCase())) return [{ type: 'artist', value: str }];
+    const cleanStr = str.replace(FEAT_BRACKET_RE, ' feat. $1');
+    const parts = cleanStr.split(ARTIST_SEP_RE).filter(Boolean);
+    if (parts.length <= 1) return [{ type: 'artist', value: str }];
+    const tokens = [];
+    for (let i = 0; i < parts.length; i++) {
+      const p = parts[i];
       ARTIST_SEP_RE.lastIndex = 0;
-      tokens.push({ type: 'sep', value: p });
-    } else {
-      const trimmed = p.trim();
-      if (trimmed) tokens.push({ type: 'artist', value: trimmed });
+      if (ARTIST_SEP_RE.test(p)) {
+        ARTIST_SEP_RE.lastIndex = 0;
+        tokens.push({ type: 'sep', value: p });
+      } else {
+        const trimmed = p.trim();
+        if (trimmed) tokens.push({ type: 'artist', value: trimmed });
+      }
     }
+    return tokens.length ? tokens : [{ type: 'artist', value: str }];
   }
-  return tokens.length ? tokens : [{ type: 'artist', value: str }];
-}
 
-function renderClickableArtists(container, rawArtist) {
-  rawArtist = stripYoutubeTopic(rawArtist);
-  if (!container) return;
-  container.innerHTML = '';
-  splitArtistTokens(rawArtist).forEach((tok) => {
-    if (tok.type === 'sep') {
-      const sep = document.createElement('span');
-      sep.className = 'artist-sep';
-      sep.textContent = tok.value;
-      container.appendChild(sep);
-    } else {
-      const span = document.createElement('span');
-      span.className = 'artist-link-part';
-      span.textContent = tok.value;
-      span.dataset.artist = tok.value;
-      span.addEventListener('click', (e) => {
-        e.stopPropagation();
-        if (tok.value && tok.value.toLowerCase() !== 'unknown artist') {
-          if (el.tvKaraoke && !el.tvKaraoke.classList.contains('hidden') && typeof closeTvKaraoke === 'function') closeTvKaraoke();
-          openArtistProfile(tok.value);
-        }
-      });
-      container.appendChild(span);
-    }
-  });
-}
+  function renderClickableArtists(container, rawArtist) {
+    rawArtist = stripYoutubeTopic(rawArtist);
+    if (!container) return;
+    container.innerHTML = '';
+    splitArtistTokens(rawArtist).forEach((tok) => {
+      if (tok.type === 'sep') {
+        const sep = document.createElement('span');
+        sep.className = 'artist-sep';
+        sep.textContent = tok.value;
+        container.appendChild(sep);
+      } else {
+        const span = document.createElement('span');
+        span.className = 'artist-link-part';
+        span.textContent = tok.value;
+        span.dataset.artist = tok.value;
+        span.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (tok.value && tok.value.toLowerCase() !== 'unknown artist') {
+            if (el.tvKaraoke && !el.tvKaraoke.classList.contains('hidden') && typeof closeTvKaraoke === 'function') closeTvKaraoke();
+            openArtistProfile(tok.value);
+          }
+        });
+        container.appendChild(span);
+      }
+    });
+  }
 
   let favArtistsCurrentList = [];
 
@@ -10644,7 +10644,7 @@ function renderClickableArtists(container, rawArtist) {
           localStorage.setItem('moodex_artist_meta_cache', JSON.stringify(cache));
         }
       })
-      .catch(() => {});
+      .catch(() => { });
   }
 
   function buildFavArtistCircleCard(artistObj, forCarousel = false, idx = 0, autoFetch = true) {
@@ -10705,7 +10705,7 @@ function renderClickableArtists(container, rawArtist) {
         openArtistProfile(artistObj.name).then(() => {
           const btnPlayTracks = document.getElementById('btn-play-artist-tracks');
           if (btnPlayTracks) btnPlayTracks.click();
-        }).catch(() => {});
+        }).catch(() => { });
       });
     }
 
@@ -11173,13 +11173,13 @@ function renderClickableArtists(container, rawArtist) {
   function toggleFavoriteTrack(track) {
     if (!track) return;
     const exists = state.favorites.some(f => isSameTrack(f, track));
-    
+
     if (exists) {
       state.favorites = state.favorites.filter(f => !isSameTrack(f, track));
     } else {
       state.favorites.unshift(stampAddedAt(track));
     }
-    
+
     localStorage.setItem('devsize_favorites', JSON.stringify(state.favorites));
     updateFavoritesBadge();
     updateFavoriteIcon();
@@ -11231,8 +11231,8 @@ function renderClickableArtists(container, rawArtist) {
     let filtered = state.favorites;
     if (query) {
       filtered = state.favorites.filter(t =>
-      (t.title && t.title.toLowerCase().includes(query)) ||
-      (t.artist && t.artist.toLowerCase().includes(query))
+        (t.title && t.title.toLowerCase().includes(query)) ||
+        (t.artist && t.artist.toLowerCase().includes(query))
       );
     }
     filtered = sortTracksFor('favorites', filtered);
@@ -11422,7 +11422,7 @@ function renderClickableArtists(container, rawArtist) {
         const updatedBlacklist = removedBlacklist.filter(p => !addedSet.has(String(p)));
         localStorage.setItem('moodex_removed_local_paths', JSON.stringify(updatedBlacklist));
       }
-    } catch (_) {}
+    } catch (_) { }
 
     const existingPaths = new Set(
       [...(state.localFiles || []), ...(state.localTracks || [])]
@@ -11446,7 +11446,7 @@ function renderClickableArtists(container, rawArtist) {
       localStorage.setItem('moodex_local_tracks', serialized);
       localStorage.setItem('devsize_local_tracks', serialized);
       if (typeof saveLocalTracks === 'function') saveLocalTracks();
-    } catch (_) {}
+    } catch (_) { }
     renderLocalFiles();
     if (added > 0) {
       showToast(opts.auto
@@ -11470,7 +11470,7 @@ function renderClickableArtists(container, rawArtist) {
     let defaultDir = '';
     try {
       if (window.electronAPI && window.electronAPI.getDefaultMusicDir) defaultDir = await window.electronAPI.getDefaultMusicDir();
-    } catch (_) {}
+    } catch (_) { }
     const folders = defaultDir ? [defaultDir] : [];
     localStorage.setItem(AUTO_SCAN_FOLDERS_KEY, JSON.stringify(folders));
     return folders;
@@ -11755,7 +11755,7 @@ function renderClickableArtists(container, rawArtist) {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ id: item.id, duration: dur })
                   });
-                } catch (e) {}
+                } catch (e) { }
               }
               finish();
             };
@@ -11834,7 +11834,7 @@ function renderClickableArtists(container, rawArtist) {
       const url = thumbPrefetchQueue.shift();
       thumbPrefetchActive++;
       fetch(url, { cache: 'force-cache', priority: 'low' })
-        .catch(() => {})
+        .catch(() => { })
         .finally(() => {
           thumbPrefetchActive--;
           pumpThumbPrefetch();
@@ -12053,7 +12053,7 @@ function renderClickableArtists(container, rawArtist) {
         if (activePointerId !== null && draggedItem.setPointerCapture) {
           draggedItem.setPointerCapture(activePointerId);
         }
-      } catch (e) {}
+      } catch (e) { }
 
       container.style.userSelect = 'none';
       draggedItem.classList.add('is-dragging');
@@ -12187,7 +12187,7 @@ function renderClickableArtists(container, rawArtist) {
         if (currentActiveId !== null && item.hasPointerCapture && item.hasPointerCapture(currentActiveId)) {
           item.releasePointerCapture(currentActiveId);
         }
-      } catch (e) {}
+      } catch (e) { }
 
       if (isDragging) {
         let targetSlotDy = 0;
@@ -12388,8 +12388,8 @@ function renderClickableArtists(container, rawArtist) {
     let filtered = pl.tracks;
     if (query) {
       filtered = pl.tracks.filter(t =>
-      (t.title && t.title.toLowerCase().includes(query)) ||
-      (t.artist && t.artist.toLowerCase().includes(query))
+        (t.title && t.title.toLowerCase().includes(query)) ||
+        (t.artist && t.artist.toLowerCase().includes(query))
       );
     }
     filtered = sortTracksFor('playlist', filtered);
@@ -12711,74 +12711,74 @@ function renderClickableArtists(container, rawArtist) {
         if (v) v.classList.remove('active');
       });
 
-        const nestedView = viewName === 'playlist-detail' || viewName === 'album' || viewName === 'artist';
-        if (!nestedView) {
-          [el.navDiscover, el.navSearch, el.navFavorites, el.navAlbums, el.navLocal, el.navDownloads, el.navHistory, el.navQueue, el.navWrapped, el.navSettings].forEach(n => {
-            if (n) n.classList.remove('active');
-          });
-        }
+      const nestedView = viewName === 'playlist-detail' || viewName === 'album' || viewName === 'artist';
+      if (!nestedView) {
+        [el.navDiscover, el.navSearch, el.navFavorites, el.navAlbums, el.navLocal, el.navDownloads, el.navHistory, el.navQueue, el.navWrapped, el.navSettings].forEach(n => {
+          if (n) n.classList.remove('active');
+        });
+      }
 
-          if (viewName === 'discover') {
-            if (el.viewDiscover) el.viewDiscover.classList.add('active');
-            restoreDiscoverHomeState(false);
-            if (el.navDiscover) el.navDiscover.classList.add('active');
-            const sp = (localStorage.getItem('moodex_home_layout') || 'spotify') === 'spotify';
-            if (sp) renderSpotifyHome();
-          } else if (viewName === 'favorites') {
-            if (el.viewFavorites) el.viewFavorites.classList.add('active');
-            if (el.navFavorites) el.navFavorites.classList.add('active');
-            renderFavoritesView();
-          } else if (viewName === 'albums') {
-            if (el.viewAlbums) el.viewAlbums.classList.add('active');
-            if (el.navAlbums) el.navAlbums.classList.add('active');
-            renderSavedAlbums();
-          } else if (viewName === 'local') {
-            if (el.viewLocal) el.viewLocal.classList.add('active');
-            if (el.navLocal) el.navLocal.classList.add('active');
-            renderLocalView();
-            runAutoScan(false);
-          } else if (viewName === 'history') {
-            if (el.viewHistory) el.viewHistory.classList.add('active');
-            if (el.navHistory) el.navHistory.classList.add('active');
-            renderHistoryView();
-          } else if (viewName === 'queue') {
-            if (el.viewQueue) el.viewQueue.classList.add('active');
-            if (el.navQueue) el.navQueue.classList.add('active');
-            renderQueueView();
-          } else if (viewName === 'playlist-detail') {
-            if (el.viewPlaylistDetail) el.viewPlaylistDetail.classList.add('active');
-          } else if (viewName === 'album') {
-            if (el.viewAlbum) el.viewAlbum.classList.add('active');
-          } else if (viewName === 'artist') {
-            if (el.viewArtist) el.viewArtist.classList.add('active');
-          } else if (viewName === 'downloads') {
-            if (el.viewDownloads) el.viewDownloads.classList.add('active');
-            if (el.navDownloads) el.navDownloads.classList.add('active');
-            renderDownloadsView();
-          } else if (viewName === 'wrapped') {
-            if (el.viewWrapped) el.viewWrapped.classList.add('active');
-            if (el.navWrapped) el.navWrapped.classList.add('active');
-            renderWrappedView();
-          } else if (viewName === 'settings') {
-            if (el.viewSettings) el.viewSettings.classList.add('active');
-            if (el.navSettings) el.navSettings.classList.add('active');
-            const savedCat = localStorage.getItem('moodex_settings_cat');
-            showSettingsCategory((savedCat === 'overview' || !savedCat) ? 'home' : savedCat);
-            updateOfflineStorageUI();
-            updateMusicFolderUI();
-  updateDownloadFolderUI();
-  updateDownloadCaptionPath();
-            checkToolsStatus(false);
-          }
+      if (viewName === 'discover') {
+        if (el.viewDiscover) el.viewDiscover.classList.add('active');
+        restoreDiscoverHomeState(false);
+        if (el.navDiscover) el.navDiscover.classList.add('active');
+        const sp = (localStorage.getItem('moodex_home_layout') || 'spotify') === 'spotify';
+        if (sp) renderSpotifyHome();
+      } else if (viewName === 'favorites') {
+        if (el.viewFavorites) el.viewFavorites.classList.add('active');
+        if (el.navFavorites) el.navFavorites.classList.add('active');
+        renderFavoritesView();
+      } else if (viewName === 'albums') {
+        if (el.viewAlbums) el.viewAlbums.classList.add('active');
+        if (el.navAlbums) el.navAlbums.classList.add('active');
+        renderSavedAlbums();
+      } else if (viewName === 'local') {
+        if (el.viewLocal) el.viewLocal.classList.add('active');
+        if (el.navLocal) el.navLocal.classList.add('active');
+        renderLocalView();
+        runAutoScan(false);
+      } else if (viewName === 'history') {
+        if (el.viewHistory) el.viewHistory.classList.add('active');
+        if (el.navHistory) el.navHistory.classList.add('active');
+        renderHistoryView();
+      } else if (viewName === 'queue') {
+        if (el.viewQueue) el.viewQueue.classList.add('active');
+        if (el.navQueue) el.navQueue.classList.add('active');
+        renderQueueView();
+      } else if (viewName === 'playlist-detail') {
+        if (el.viewPlaylistDetail) el.viewPlaylistDetail.classList.add('active');
+      } else if (viewName === 'album') {
+        if (el.viewAlbum) el.viewAlbum.classList.add('active');
+      } else if (viewName === 'artist') {
+        if (el.viewArtist) el.viewArtist.classList.add('active');
+      } else if (viewName === 'downloads') {
+        if (el.viewDownloads) el.viewDownloads.classList.add('active');
+        if (el.navDownloads) el.navDownloads.classList.add('active');
+        renderDownloadsView();
+      } else if (viewName === 'wrapped') {
+        if (el.viewWrapped) el.viewWrapped.classList.add('active');
+        if (el.navWrapped) el.navWrapped.classList.add('active');
+        renderWrappedView();
+      } else if (viewName === 'settings') {
+        if (el.viewSettings) el.viewSettings.classList.add('active');
+        if (el.navSettings) el.navSettings.classList.add('active');
+        const savedCat = localStorage.getItem('moodex_settings_cat');
+        showSettingsCategory((savedCat === 'overview' || !savedCat) ? 'home' : savedCat);
+        updateOfflineStorageUI();
+        updateMusicFolderUI();
+        updateDownloadFolderUI();
+        updateDownloadCaptionPath();
+        checkToolsStatus(false);
+      }
 
-          updateNavIndicator(true);
+      updateNavIndicator(true);
 
-          refreshNavBadges();
+      refreshNavBadges();
 
-          highlightPlayingRow();
-          if (typeof syncHomeAmbientVisibility === 'function') syncHomeAmbientVisibility();
-          updateFxVisibility();
-          if (el.mainContent) updateFade(el.mainContent);
+      highlightPlayingRow();
+      if (typeof syncHomeAmbientVisibility === 'function') syncHomeAmbientVisibility();
+      updateFxVisibility();
+      if (el.mainContent) updateFade(el.mainContent);
     });
     if (el.mainContent) updateFade(el.mainContent);
   }
@@ -12826,174 +12826,174 @@ function renderClickableArtists(container, rawArtist) {
   const stackObserver = new MutationObserver(() => { if (stackRaf) return; stackRaf = requestAnimationFrame(() => { stackRaf = 0; refreshStacks(); }); });
   ['.sidebar-nav', '.settings-nav', '#audio-tabs'].forEach((s) => { const n = document.querySelector(s); if (n) stackObserver.observe(n, { attributes: true, attributeFilter: ['class', 'style'], childList: true, subtree: true }); });
 
-let navIndicatorAnimId = 0;
-let navIndicatorCurTop = null;
-let navIndicatorCurBot = null;
+  let navIndicatorAnimId = 0;
+  let navIndicatorCurTop = null;
+  let navIndicatorCurBot = null;
 
-function getNavItemOffsetInSidebar(btn, nav) {
-  const ind = btn.querySelector('.nav-indicator') || btn;
-  let y = 0;
-  let cur = ind;
-  while (cur && cur !== nav && cur !== document.body) {
-    y += cur.offsetTop || 0;
-    cur = cur.offsetParent;
-  }
-  return { top: y, height: ind.offsetHeight || 48 };
-}
-
-function moveNavIndicator(targetBtn, animate = true) {
-  const indicator = document.getElementById('nav-active-indicator');
-  const nav = document.querySelector('.sidebar-nav');
-  if (!indicator || !nav) return;
-
-  document.querySelectorAll('.sidebar-nav .nav-item').forEach(b => {
-    if (b !== targetBtn) b.classList.remove('indicator-arrived');
-  });
-
-  if (navIndicatorAnimId) {
-    cancelAnimationFrame(navIndicatorAnimId);
-    navIndicatorAnimId = 0;
-  }
-
-  const isReduced = !animate || document.body.classList.contains('perf') || document.documentElement.classList.contains('force-reduced-motion');
-
-  if (!targetBtn || targetBtn.id === 'nav-discover' || targetBtn.classList.contains('nav-collapsed')) {
-    if (!isReduced && navIndicatorCurTop !== null && !indicator.classList.contains('is-hidden')) {
-      const startTop = navIndicatorCurTop;
-      const startH = Math.max(48, (navIndicatorCurBot ?? (startTop + 48)) - startTop);
-      const shrinkTop = startTop + (startH - 48) * 0.5;
-      const t0 = performance.now();
-      const dur = 260;
-      const fadeStep = (now) => {
-        const p = Math.min(1, (now - t0) / dur);
-        const e = 1 - Math.pow(1 - p, 3);
-        const sc = 1 - 0.55 * e;
-        const curY = startTop + (shrinkTop - startTop) * e;
-        indicator.style.height = (startH - (startH - 48) * e).toFixed(1) + 'px';
-        indicator.style.transform = `translate3d(0, ${curY.toFixed(1)}px, 0) scale(${sc.toFixed(3)})`;
-        indicator.style.opacity = String((1 - e).toFixed(3));
-        if (p < 1) {
-          navIndicatorAnimId = requestAnimationFrame(fadeStep);
-        } else {
-          navIndicatorAnimId = 0;
-          indicator.classList.add('is-hidden');
-          indicator.style.opacity = '';
-          navIndicatorCurTop = null;
-          navIndicatorCurBot = null;
-        }
-      };
-      navIndicatorAnimId = requestAnimationFrame(fadeStep);
-    } else {
-      indicator.classList.add('is-hidden');
-      indicator.style.opacity = '';
-      navIndicatorCurTop = null;
-      navIndicatorCurBot = null;
+  function getNavItemOffsetInSidebar(btn, nav) {
+    const ind = btn.querySelector('.nav-indicator') || btn;
+    let y = 0;
+    let cur = ind;
+    while (cur && cur !== nav && cur !== document.body) {
+      y += cur.offsetTop || 0;
+      cur = cur.offsetParent;
     }
-    return;
+    return { top: y, height: ind.offsetHeight || 48 };
   }
 
-  const box = getNavItemOffsetInSidebar(targetBtn, nav);
-  const destTop = box.top;
-  const destBot = box.top + box.height;
+  function moveNavIndicator(targetBtn, animate = true) {
+    const indicator = document.getElementById('nav-active-indicator');
+    const nav = document.querySelector('.sidebar-nav');
+    if (!indicator || !nav) return;
 
-  const wasHidden = indicator.classList.contains('is-hidden') || navIndicatorCurTop === null;
-  indicator.classList.remove('is-hidden');
-  indicator.style.opacity = '1';
+    document.querySelectorAll('.sidebar-nav .nav-item').forEach(b => {
+      if (b !== targetBtn) b.classList.remove('indicator-arrived');
+    });
 
-  if (isReduced) {
-    navIndicatorCurTop = destTop;
-    navIndicatorCurBot = destBot;
-    indicator.style.transform = `translate3d(0, ${destTop.toFixed(1)}px, 0) scale(1)`;
-    indicator.style.height = (destBot - destTop).toFixed(1) + 'px';
-    targetBtn.classList.add('indicator-arrived');
-    return;
-  }
-
-  if (wasHidden) {
-    navIndicatorCurTop = destTop;
-    navIndicatorCurBot = destBot;
-    indicator.style.height = (destBot - destTop).toFixed(1) + 'px';
-    const t0 = performance.now();
-    const dur = 280;
-    const popStep = (now) => {
-      const p = Math.min(1, (now - t0) / dur);
-      const e = 1 - Math.pow(1 - p, 3);
-      const sc = 0.45 + 0.55 * e;
-      indicator.style.transform = `translate3d(0, ${destTop.toFixed(1)}px, 0) scale(${sc.toFixed(3)})`;
-      indicator.style.opacity = String(e.toFixed(3));
-      if (p >= 0.65) targetBtn.classList.add('indicator-arrived');
-      if (p < 1) {
-        navIndicatorAnimId = requestAnimationFrame(popStep);
-      } else {
-        navIndicatorAnimId = 0;
-        indicator.style.transform = `translate3d(0, ${destTop.toFixed(1)}px, 0) scale(1)`;
-        indicator.style.opacity = '';
-        targetBtn.classList.add('indicator-arrived');
-      }
-    };
-    navIndicatorAnimId = requestAnimationFrame(popStep);
-    return;
-  }
-
-  const startTop = navIndicatorCurTop;
-  const startBot = navIndicatorCurBot;
-  const dist = Math.abs(destTop - startTop);
-  if (dist < 2) {
-    navIndicatorCurTop = destTop;
-    navIndicatorCurBot = destBot;
-    indicator.style.transform = `translate3d(0, ${destTop.toFixed(1)}px, 0) scale(1)`;
-    indicator.style.height = (destBot - destTop).toFixed(1) + 'px';
-    targetBtn.classList.add('indicator-arrived');
-    return;
-  }
-
-  const movingDown = destTop > startTop;
-  const totalDur = Math.min(580, Math.max(480, 460 + dist * 0.22));
-  const startTime = performance.now();
-  let arrivedSet = false;
-
-  const easeLead = (t) => 1 - Math.pow(1 - Math.min(1, t / 0.72), 3.2);
-  const easeTrail = (t) => t < 0.34 ? 0 : 1 - Math.pow(1 - (t - 0.34) / 0.66, 2.4);
-
-  const step = (now) => {
-    const rawT = Math.min(1, (now - startTime) / totalDur);
-    const kLead = easeLead(rawT);
-    const kTrail = easeTrail(rawT);
-    if (movingDown) {
-      navIndicatorCurBot = startBot + (destBot - startBot) * kLead;
-      navIndicatorCurTop = startTop + (destTop - startTop) * kTrail;
-    } else {
-      navIndicatorCurTop = startTop + (destTop - startTop) * kLead;
-      navIndicatorCurBot = startBot + (destBot - startBot) * kTrail;
-    }
-    const h = Math.max(48, navIndicatorCurBot - navIndicatorCurTop);
-    const stretchRatio = Math.min(1, (h - 48) / 140);
-    const scaleX = 1 - stretchRatio * 0.08;
-    indicator.style.transform = `translate3d(0, ${navIndicatorCurTop.toFixed(1)}px, 0) scaleX(${scaleX.toFixed(3)})`;
-    indicator.style.height = h.toFixed(1) + 'px';
-    if (!arrivedSet && rawT >= 0.62) {
-      arrivedSet = true;
-      targetBtn.classList.add('indicator-arrived');
-    }
-    if (rawT < 1) {
-      navIndicatorAnimId = requestAnimationFrame(step);
-    } else {
+    if (navIndicatorAnimId) {
+      cancelAnimationFrame(navIndicatorAnimId);
       navIndicatorAnimId = 0;
+    }
+
+    const isReduced = !animate || document.body.classList.contains('perf') || document.documentElement.classList.contains('force-reduced-motion');
+
+    if (!targetBtn || targetBtn.id === 'nav-discover' || targetBtn.classList.contains('nav-collapsed')) {
+      if (!isReduced && navIndicatorCurTop !== null && !indicator.classList.contains('is-hidden')) {
+        const startTop = navIndicatorCurTop;
+        const startH = Math.max(48, (navIndicatorCurBot ?? (startTop + 48)) - startTop);
+        const shrinkTop = startTop + (startH - 48) * 0.5;
+        const t0 = performance.now();
+        const dur = 260;
+        const fadeStep = (now) => {
+          const p = Math.min(1, (now - t0) / dur);
+          const e = 1 - Math.pow(1 - p, 3);
+          const sc = 1 - 0.55 * e;
+          const curY = startTop + (shrinkTop - startTop) * e;
+          indicator.style.height = (startH - (startH - 48) * e).toFixed(1) + 'px';
+          indicator.style.transform = `translate3d(0, ${curY.toFixed(1)}px, 0) scale(${sc.toFixed(3)})`;
+          indicator.style.opacity = String((1 - e).toFixed(3));
+          if (p < 1) {
+            navIndicatorAnimId = requestAnimationFrame(fadeStep);
+          } else {
+            navIndicatorAnimId = 0;
+            indicator.classList.add('is-hidden');
+            indicator.style.opacity = '';
+            navIndicatorCurTop = null;
+            navIndicatorCurBot = null;
+          }
+        };
+        navIndicatorAnimId = requestAnimationFrame(fadeStep);
+      } else {
+        indicator.classList.add('is-hidden');
+        indicator.style.opacity = '';
+        navIndicatorCurTop = null;
+        navIndicatorCurBot = null;
+      }
+      return;
+    }
+
+    const box = getNavItemOffsetInSidebar(targetBtn, nav);
+    const destTop = box.top;
+    const destBot = box.top + box.height;
+
+    const wasHidden = indicator.classList.contains('is-hidden') || navIndicatorCurTop === null;
+    indicator.classList.remove('is-hidden');
+    indicator.style.opacity = '1';
+
+    if (isReduced) {
       navIndicatorCurTop = destTop;
       navIndicatorCurBot = destBot;
       indicator.style.transform = `translate3d(0, ${destTop.toFixed(1)}px, 0) scale(1)`;
       indicator.style.height = (destBot - destTop).toFixed(1) + 'px';
       targetBtn.classList.add('indicator-arrived');
+      return;
     }
-  };
-  navIndicatorAnimId = requestAnimationFrame(step);
-}
 
-function updateNavIndicator(animate) {
-  refreshStacks();
-  const active = document.querySelector('.sidebar-nav .nav-item.active');
-  moveNavIndicator(active, animate);
-}
+    if (wasHidden) {
+      navIndicatorCurTop = destTop;
+      navIndicatorCurBot = destBot;
+      indicator.style.height = (destBot - destTop).toFixed(1) + 'px';
+      const t0 = performance.now();
+      const dur = 280;
+      const popStep = (now) => {
+        const p = Math.min(1, (now - t0) / dur);
+        const e = 1 - Math.pow(1 - p, 3);
+        const sc = 0.45 + 0.55 * e;
+        indicator.style.transform = `translate3d(0, ${destTop.toFixed(1)}px, 0) scale(${sc.toFixed(3)})`;
+        indicator.style.opacity = String(e.toFixed(3));
+        if (p >= 0.65) targetBtn.classList.add('indicator-arrived');
+        if (p < 1) {
+          navIndicatorAnimId = requestAnimationFrame(popStep);
+        } else {
+          navIndicatorAnimId = 0;
+          indicator.style.transform = `translate3d(0, ${destTop.toFixed(1)}px, 0) scale(1)`;
+          indicator.style.opacity = '';
+          targetBtn.classList.add('indicator-arrived');
+        }
+      };
+      navIndicatorAnimId = requestAnimationFrame(popStep);
+      return;
+    }
+
+    const startTop = navIndicatorCurTop;
+    const startBot = navIndicatorCurBot;
+    const dist = Math.abs(destTop - startTop);
+    if (dist < 2) {
+      navIndicatorCurTop = destTop;
+      navIndicatorCurBot = destBot;
+      indicator.style.transform = `translate3d(0, ${destTop.toFixed(1)}px, 0) scale(1)`;
+      indicator.style.height = (destBot - destTop).toFixed(1) + 'px';
+      targetBtn.classList.add('indicator-arrived');
+      return;
+    }
+
+    const movingDown = destTop > startTop;
+    const totalDur = Math.min(580, Math.max(480, 460 + dist * 0.22));
+    const startTime = performance.now();
+    let arrivedSet = false;
+
+    const easeLead = (t) => 1 - Math.pow(1 - Math.min(1, t / 0.72), 3.2);
+    const easeTrail = (t) => t < 0.34 ? 0 : 1 - Math.pow(1 - (t - 0.34) / 0.66, 2.4);
+
+    const step = (now) => {
+      const rawT = Math.min(1, (now - startTime) / totalDur);
+      const kLead = easeLead(rawT);
+      const kTrail = easeTrail(rawT);
+      if (movingDown) {
+        navIndicatorCurBot = startBot + (destBot - startBot) * kLead;
+        navIndicatorCurTop = startTop + (destTop - startTop) * kTrail;
+      } else {
+        navIndicatorCurTop = startTop + (destTop - startTop) * kLead;
+        navIndicatorCurBot = startBot + (destBot - startBot) * kTrail;
+      }
+      const h = Math.max(48, navIndicatorCurBot - navIndicatorCurTop);
+      const stretchRatio = Math.min(1, (h - 48) / 140);
+      const scaleX = 1 - stretchRatio * 0.08;
+      indicator.style.transform = `translate3d(0, ${navIndicatorCurTop.toFixed(1)}px, 0) scaleX(${scaleX.toFixed(3)})`;
+      indicator.style.height = h.toFixed(1) + 'px';
+      if (!arrivedSet && rawT >= 0.62) {
+        arrivedSet = true;
+        targetBtn.classList.add('indicator-arrived');
+      }
+      if (rawT < 1) {
+        navIndicatorAnimId = requestAnimationFrame(step);
+      } else {
+        navIndicatorAnimId = 0;
+        navIndicatorCurTop = destTop;
+        navIndicatorCurBot = destBot;
+        indicator.style.transform = `translate3d(0, ${destTop.toFixed(1)}px, 0) scale(1)`;
+        indicator.style.height = (destBot - destTop).toFixed(1) + 'px';
+        targetBtn.classList.add('indicator-arrived');
+      }
+    };
+    navIndicatorAnimId = requestAnimationFrame(step);
+  }
+
+  function updateNavIndicator(animate) {
+    refreshStacks();
+    const active = document.querySelector('.sidebar-nav .nav-item.active');
+    moveNavIndicator(active, animate);
+  }
 
   window.addEventListener('resize', () => updateNavIndicator(false));
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => updateNavIndicator(false));
@@ -13011,21 +13011,21 @@ function updateNavIndicator(animate) {
     const tvkPlay = document.getElementById('tvk-play-icon');
     const tvkPause = document.getElementById('tvk-pause-icon');
     if (tvkPlay && tvkPlay.getAnimations) {
-      try { tvkPlay.getAnimations().forEach(a => a.cancel()); } catch (e) {}
+      try { tvkPlay.getAnimations().forEach(a => a.cancel()); } catch (e) { }
     }
     if (tvkPause && tvkPause.getAnimations) {
-      try { tvkPause.getAnimations().forEach(a => a.cancel()); } catch (e) {}
+      try { tvkPause.getAnimations().forEach(a => a.cancel()); } catch (e) { }
     }
     if (el.playIcon && el.playIcon.getAnimations) {
-      try { el.playIcon.getAnimations().forEach(a => a.cancel()); } catch (e) {}
+      try { el.playIcon.getAnimations().forEach(a => a.cancel()); } catch (e) { }
     }
     if (el.pauseIcon && el.pauseIcon.getAnimations) {
-      try { el.pauseIcon.getAnimations().forEach(a => a.cancel()); } catch (e) {}
+      try { el.pauseIcon.getAnimations().forEach(a => a.cancel()); } catch (e) { }
     }
 
     if (tvkBtn) {
       if (tvkBtn._morphAnim) {
-        try { tvkBtn._morphAnim.cancel(); } catch (e) {}
+        try { tvkBtn._morphAnim.cancel(); } catch (e) { }
         tvkBtn._morphAnim = null;
       }
       tvkBtn.classList.toggle('playing', !!playing);
@@ -13033,7 +13033,7 @@ function updateNavIndicator(animate) {
 
     if (!btn) return;
     if (btn._morphAnim) {
-      try { btn._morphAnim.cancel(); } catch (e) {}
+      try { btn._morphAnim.cancel(); } catch (e) { }
       btn._morphAnim = null;
     }
     btn.classList.toggle('playing', !!playing);
@@ -13163,7 +13163,7 @@ function updateNavIndicator(animate) {
       el.btnRailToggle.setAttribute('aria-label', el.btnRailToggle.title);
     }
     if (persist) {
-      try { localStorage.setItem(RAIL_COLLAPSED_KEY, collapsed ? '1' : '0'); } catch (e) {}
+      try { localStorage.setItem(RAIL_COLLAPSED_KEY, collapsed ? '1' : '0'); } catch (e) { }
     }
     // The sliding pill indicator is only used by the collapsed rail; let it
     // re-measure now that the row geometry has changed.
@@ -13292,7 +13292,7 @@ function updateNavIndicator(animate) {
         entries = entries.slice(0, PLAY_STATS_MAX);
       }
       localStorage.setItem(PLAY_STATS_KEY, JSON.stringify(Object.fromEntries(entries)));
-    } catch (e) {}
+    } catch (e) { }
   }
 
   function playStatKey(track) {
@@ -13429,7 +13429,7 @@ function updateNavIndicator(animate) {
         ? await showConfirm('Clear your listening stats? This cannot be undone.')
         : window.confirm('Clear your listening stats? This cannot be undone.');
       if (!ok) return;
-      try { localStorage.removeItem(PLAY_STATS_KEY); } catch (e) {}
+      try { localStorage.removeItem(PLAY_STATS_KEY); } catch (e) { }
       renderWrappedView();
     });
   }
@@ -13563,53 +13563,53 @@ function updateNavIndicator(animate) {
     });
   }
 
-function bindCoverHoldZoom(wrapEl) {
-  if (!wrapEl || wrapEl._holdZoomBound) return;
-  wrapEl._holdZoomBound = true;
-  let holdTimer = null, isZooming = false;
-  const getImg = () => wrapEl.tagName === 'IMG' ? wrapEl : wrapEl.querySelector('img');
-  const updateOrigin = (e) => {
-    const img = getImg();
-    if (!img) return;
-    const r = wrapEl.getBoundingClientRect();
-    const x = Math.max(0, Math.min(100, ((e.clientX - r.left) / (r.width || 1)) * 100));
-    const y = Math.max(0, Math.min(100, ((e.clientY - r.top) / (r.height || 1)) * 100));
-    img.style.transformOrigin = x + '% ' + y + '%';
-    img.style.transform = 'scale(2.35)';
-  };
-  wrapEl.addEventListener('pointerdown', (e) => {
-    if (e.button !== 0) return;
-    wrapEl._zoomedFlag = false;
-    holdTimer = setTimeout(() => {
+  function bindCoverHoldZoom(wrapEl) {
+    if (!wrapEl || wrapEl._holdZoomBound) return;
+    wrapEl._holdZoomBound = true;
+    let holdTimer = null, isZooming = false;
+    const getImg = () => wrapEl.tagName === 'IMG' ? wrapEl : wrapEl.querySelector('img');
+    const updateOrigin = (e) => {
       const img = getImg();
       if (!img) return;
-      isZooming = true;
-      wrapEl._zoomedFlag = true;
-      try { wrapEl.setPointerCapture(e.pointerId); } catch (_) {}
-      img.style.transition = document.body.classList.contains('perf') ? 'none' : 'transform 180ms cubic-bezier(0.2, 0, 0, 1)';
-      updateOrigin(e);
-    }, 320);
-  });
-  wrapEl.addEventListener('pointermove', (e) => { if (isZooming) updateOrigin(e); });
-  const endZoom = (e) => {
-    if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
-    if (isZooming) {
-      isZooming = false;
-      try { wrapEl.releasePointerCapture(e.pointerId); } catch (_) {}
-      const img = getImg();
-      if (img) {
-        img.style.transition = document.body.classList.contains('perf') ? 'none' : 'transform 220ms cubic-bezier(0.2, 0, 0, 1)';
-        img.style.transform = '';
+      const r = wrapEl.getBoundingClientRect();
+      const x = Math.max(0, Math.min(100, ((e.clientX - r.left) / (r.width || 1)) * 100));
+      const y = Math.max(0, Math.min(100, ((e.clientY - r.top) / (r.height || 1)) * 100));
+      img.style.transformOrigin = x + '% ' + y + '%';
+      img.style.transform = 'scale(2.35)';
+    };
+    wrapEl.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      wrapEl._zoomedFlag = false;
+      holdTimer = setTimeout(() => {
+        const img = getImg();
+        if (!img) return;
+        isZooming = true;
+        wrapEl._zoomedFlag = true;
+        try { wrapEl.setPointerCapture(e.pointerId); } catch (_) { }
+        img.style.transition = document.body.classList.contains('perf') ? 'none' : 'transform 180ms cubic-bezier(0.2, 0, 0, 1)';
+        updateOrigin(e);
+      }, 320);
+    });
+    wrapEl.addEventListener('pointermove', (e) => { if (isZooming) updateOrigin(e); });
+    const endZoom = (e) => {
+      if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
+      if (isZooming) {
+        isZooming = false;
+        try { wrapEl.releasePointerCapture(e.pointerId); } catch (_) { }
+        const img = getImg();
+        if (img) {
+          img.style.transition = document.body.classList.contains('perf') ? 'none' : 'transform 220ms cubic-bezier(0.2, 0, 0, 1)';
+          img.style.transform = '';
+        }
+        setTimeout(() => { wrapEl._zoomedFlag = false; }, 80);
       }
-      setTimeout(() => { wrapEl._zoomedFlag = false; }, 80);
-    }
-  };
-  wrapEl.addEventListener('pointerup', endZoom);
-  wrapEl.addEventListener('pointercancel', endZoom);
-  wrapEl.addEventListener('click', (e) => {
-    if (wrapEl._zoomedFlag) { e.preventDefault(); e.stopImmediatePropagation(); wrapEl._zoomedFlag = false; }
-  }, true);
-}
+    };
+    wrapEl.addEventListener('pointerup', endZoom);
+    wrapEl.addEventListener('pointercancel', endZoom);
+    wrapEl.addEventListener('click', (e) => {
+      if (wrapEl._zoomedFlag) { e.preventDefault(); e.stopImmediatePropagation(); wrapEl._zoomedFlag = false; }
+    }, true);
+  }
 
   if (el.coverContainer) {
     el.coverContainer.style.cursor = 'pointer';
@@ -13678,7 +13678,7 @@ function bindCoverHoldZoom(wrapEl) {
 
     const stopDrag = (e) => {
       if (!edge.hasPointerCapture(e.pointerId)) return;
-      try { edge.releasePointerCapture(e.pointerId); } catch (_) {}
+      try { edge.releasePointerCapture(e.pointerId); } catch (_) { }
       edge.classList.remove('dragging');
       document.body.classList.remove('is-resizing-panel');
       if (raf) {
@@ -13894,7 +13894,7 @@ function bindCoverHoldZoom(wrapEl) {
     try {
       localStorage.setItem('moodex_volume', String(state.volume));
       localStorage.setItem('moodex_muted', state.isMuted ? '1' : '0');
-    } catch (e) {}
+    } catch (e) { }
   }
 
   if (el.volumeSlider) {
@@ -14310,7 +14310,7 @@ function bindCoverHoldZoom(wrapEl) {
     el.btnToggleHqAudio.addEventListener('click', () => {
       state.hqEnabled = !state.hqEnabled;
       el.btnToggleHqAudio.classList.toggle('active', state.hqEnabled);
-      
+
       if (el.hqPanelWrapper) {
         el.hqPanelWrapper.classList.toggle('expanded', state.hqEnabled);
         if (el.hqEnhancerCard) el.hqEnhancerCard.classList.toggle('is-expanded', state.hqEnabled);
@@ -15205,7 +15205,7 @@ function bindCoverHoldZoom(wrapEl) {
     const v = document.querySelector('#custom-bg video');
     if (!v) return;
     const hidden = document.hidden || document.body.classList.contains('perf');
-    if (hidden) v.pause(); else v.play().catch(() => {});
+    if (hidden) v.pause(); else v.play().catch(() => { });
   }
   document.addEventListener('visibilitychange', syncBgVideoPlayback);
   if (window.electronAPI && window.electronAPI.onWindowVisibility) window.electronAPI.onWindowVisibility(() => syncBgVideoPlayback());
@@ -15258,7 +15258,7 @@ function bindCoverHoldZoom(wrapEl) {
             showToast('This background video is larger than 1080p and may stutter. A 1080p file plays smoother.', 'info');
           }
         }, { once: true });
-        vid.play().catch(() => {});
+        vid.play().catch(() => { });
         customBg.appendChild(vid);
       } else {
         const img = document.createElement('img');
@@ -15413,7 +15413,7 @@ function bindCoverHoldZoom(wrapEl) {
         };
       }
     }
-  } catch (_) {}
+  } catch (_) { }
 
   function applyMeshCfg(cfg, save = true) {
     meshCfg = cfg;
@@ -15547,7 +15547,7 @@ function bindCoverHoldZoom(wrapEl) {
     const endDrag = (e) => {
       if (isDragging) {
         isDragging = false;
-        try { dotEl.releasePointerCapture(e.pointerId); } catch (_) {}
+        try { dotEl.releasePointerCapture(e.pointerId); } catch (_) { }
         dotEl.style.cursor = 'grab';
       }
     };
@@ -15980,7 +15980,7 @@ function bindCoverHoldZoom(wrapEl) {
         cancelAnimationFrame(m3cRateTweenRaf);
         m3cRateTweenRaf = 0;
       }
-      try { m3cCoverAnim.cancel(); } catch (e) {}
+      try { m3cCoverAnim.cancel(); } catch (e) { }
       m3cCoverAnim = null;
     }
     return null;
@@ -16758,7 +16758,7 @@ function bindCoverHoldZoom(wrapEl) {
     document.querySelectorAll('#view-settings .settings-section').forEach(s => s.classList.toggle('cat-hidden', s.dataset.cat !== cat));
     document.querySelectorAll('#settings-nav .settings-nav-btn').forEach(b => b.classList.toggle('active', b.dataset.cat === cat));
     const pane = document.querySelector('#view-settings .settings-pane'); if (pane) pane.scrollTop = 0;
-    try { localStorage.setItem('moodex_settings_cat', cat); } catch (e) {}
+    try { localStorage.setItem('moodex_settings_cat', cat); } catch (e) { }
     if (cat === 'custom-themes' && typeof renderThemeCards === 'function') renderThemeCards();
     if (cat === 'plugins' && typeof reloadPluginsList === 'function') reloadPluginsList();
     refreshStacks();
@@ -17405,7 +17405,7 @@ function bindCoverHoldZoom(wrapEl) {
     currentAudioOutputDeviceId = deviceId || 'default';
     try {
       localStorage.setItem('moodex_audio_output_device', currentAudioOutputDeviceId);
-    } catch (_) {}
+    } catch (_) { }
 
     const targetId = (deviceId === 'default' || !deviceId) ? '' : deviceId;
 
@@ -17419,7 +17419,7 @@ function bindCoverHoldZoom(wrapEl) {
     if (window.audioEngine && window.audioEngine.ctx && typeof window.audioEngine.ctx.setSinkId === 'function') {
       try {
         await window.audioEngine.ctx.setSinkId(targetId);
-      } catch (_) {}
+      } catch (_) { }
     }
 
     const labelEl = document.getElementById('audio-output-label');
@@ -17428,8 +17428,8 @@ function bindCoverHoldZoom(wrapEl) {
       let foundLabel = null;
       menuEl.querySelectorAll('.m3-dropdown-option').forEach(opt => {
         const isMatch = (opt.dataset.value === currentAudioOutputDeviceId) ||
-                        (opt.dataset.value === '' && currentAudioOutputDeviceId === 'default') ||
-                        (opt.dataset.value === 'default' && currentAudioOutputDeviceId === '');
+          (opt.dataset.value === '' && currentAudioOutputDeviceId === 'default') ||
+          (opt.dataset.value === 'default' && currentAudioOutputDeviceId === '');
         if (isMatch) {
           opt.classList.add('selected');
           foundLabel = opt.textContent;
@@ -18055,7 +18055,7 @@ function bindCoverHoldZoom(wrapEl) {
           const a = $('about-version'); if (a) a.textContent = 'Version ' + v;
           const t = document.querySelector('.settings-version-tag'); if (t) t.textContent = 'v' + v;
         }
-      }).catch(() => {});
+      }).catch(() => { });
     } else {
       const a = $('about-version');
       if (a && a.textContent) {
@@ -18269,7 +18269,7 @@ function bindCoverHoldZoom(wrapEl) {
               if (gh.html_url) latestUpdateInfo.htmlUrl = gh.html_url;
               if (gh.tag_name && !latestUpdateInfo.version) latestUpdateInfo.version = gh.tag_name;
             }
-          } catch (_) {}
+          } catch (_) { }
         }
 
         populateOtaUpdateSheet(latestUpdateInfo);
@@ -18327,7 +18327,7 @@ function bindCoverHoldZoom(wrapEl) {
               if (window.electronAPI && window.electronAPI.installUpdateNow) {
                 window.electronAPI.installUpdateNow();
               }
-            } catch (_) {}
+            } catch (_) { }
           }
         } else if (wasManual) {
           showToast('Could not check for updates', 'error');
@@ -18371,7 +18371,7 @@ function bindCoverHoldZoom(wrapEl) {
               if (window.electronAPI && window.electronAPI.installUpdateNow) {
                 window.electronAPI.installUpdateNow();
               }
-            } catch (_) {}
+            } catch (_) { }
           }
           return;
         }
@@ -18582,7 +18582,7 @@ function bindCoverHoldZoom(wrapEl) {
   function syncDiscordRpcUI() {
     if (btnDiscordRpc) {
       btnDiscordRpc.classList.toggle('active', state.discordRpcEnabled);
-      
+
     }
     if (badgeDiscordRpc) {
       badgeDiscordRpc.textContent = state.discordRpcEnabled ? 'on' : 'off';
@@ -18767,7 +18767,7 @@ function bindCoverHoldZoom(wrapEl) {
               if (typeof showToast === 'function') showToast('Connected to Last.fm as @' + sData.username, 'info');
               closeLastFmModal();
             }
-          } catch (_) {}
+          } catch (_) { }
         }, 2500);
       } catch (err) {
         if (statusEl) {
@@ -18875,8 +18875,8 @@ function bindCoverHoldZoom(wrapEl) {
   syncLastFmUI();
 
   function createWavyProgress(container) {
-    const W = 240, H = 12, WL = 16; let d = `M0 ${H/2}`;
-    for (let x = 0; x < W; x += WL) d += ` q ${WL/4} ${-H/2} ${WL/2} 0 t ${WL/2} 0`;
+    const W = 240, H = 12, WL = 16; let d = `M0 ${H / 2}`;
+    for (let x = 0; x < W; x += WL) d += ` q ${WL / 4} ${-H / 2} ${WL / 2} 0 t ${WL / 2} 0`;
     container.innerHTML = `<svg class="wavy" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"><path class="wavy-track" pathLength="100" d="${d}"/><path class="wavy-fill" pathLength="100" d="${d}"/></svg>`;
     const fill = container.querySelector('.wavy-fill'); fill.style.strokeDasharray = '100'; fill.style.strokeDashoffset = '100';
     return { set(p) { fill.style.strokeDashoffset = String(100 - Math.max(0, Math.min(100, p))); } };
@@ -18996,7 +18996,7 @@ function bindCoverHoldZoom(wrapEl) {
     activeImportToast = null;
   }
 
-  function hydrateMissingPlaylistCovers() {}
+  function hydrateMissingPlaylistCovers() { }
 
   async function matchSpotifyTracks(rawTracks, playlistName = 'Playlist', onProgress, options = {}) {
     if (el && el.linkImportModal) closeModal(el.linkImportModal);
@@ -19184,7 +19184,7 @@ function bindCoverHoldZoom(wrapEl) {
       if (currentSpotifyImportMode === 'login' && btnConfirmSpotifyImport && btnConfirmSpotifyImport.dataset.action !== 'done') {
         btnConfirmSpotifyImport.disabled = !spotifyConnected;
       }
-    } catch (e) {}
+    } catch (e) { }
   }
 
   function classifyImportError(provider, statusOrError, body) {
@@ -19387,7 +19387,7 @@ function bindCoverHoldZoom(wrapEl) {
               }
               return;
             }
-          } catch (e) {}
+          } catch (e) { }
         }, 2000);
       } catch (err) {
         if (spLoginStatus) {
@@ -19446,7 +19446,7 @@ function bindCoverHoldZoom(wrapEl) {
               }
             }
           }
-        } catch (e) {}
+        } catch (e) { }
       }
       if (spFileInfo) spFileInfo.textContent = names.join(', ');
     });
@@ -19977,7 +19977,7 @@ function bindCoverHoldZoom(wrapEl) {
             parsedAppleExport.likes.push(...res.likes);
             parsedAppleExport.playlists.push(...res.playlists);
           }
-        } catch (err) {}
+        } catch (err) { }
       }
       if (appleFileInfo) appleFileInfo.textContent = names.join(', ');
 
@@ -20376,7 +20376,7 @@ function bindCoverHoldZoom(wrapEl) {
           const res = await window.electronAPI.googleLogin();
           googleConnected = !!(res && res.loggedIn);
         }
-      } catch (e) {}
+      } catch (e) { }
       updateGoogleAuthUI();
     });
   }
@@ -20387,7 +20387,7 @@ function bindCoverHoldZoom(wrapEl) {
         if (window.electronAPI && window.electronAPI.googleLogout) {
           await window.electronAPI.googleLogout();
         }
-      } catch (e) {}
+      } catch (e) { }
       googleConnected = false;
       updateGoogleAuthUI();
     });
@@ -20780,7 +20780,7 @@ function bindCoverHoldZoom(wrapEl) {
         const v = await window.electronAPI.getAppVersion();
         if (v) appVer = v;
       }
-    } catch (e) {}
+    } catch (e) { }
 
     const payload = {
       app: 'Moodex',
@@ -21017,7 +21017,7 @@ function bindCoverHoldZoom(wrapEl) {
           const k = localStorage.key(i);
           if (k) dump[k] = localStorage.getItem(k);
         }
-      } catch (_) {}
+      } catch (_) { }
       const payload = {
         app: 'Moodex',
         version: '1.0',
@@ -21056,16 +21056,16 @@ function bindCoverHoldZoom(wrapEl) {
       const data = res.data;
       const store = data.localStorage || data;
       if (typeof store === 'object' && store !== null) {
-        try { localStorage.clear(); } catch (_) {}
+        try { localStorage.clear(); } catch (_) { }
         for (const [key, val] of Object.entries(store)) {
           if (val !== undefined && val !== null) {
             try {
               localStorage.setItem(key, typeof val === 'string' ? val : JSON.stringify(val));
-            } catch (_) {}
+            } catch (_) { }
           }
         }
         if (window.electronAPI.storageSaveSync && window.__MOODEX_STORAGE_MAP__) {
-          try { window.electronAPI.storageSaveSync(window.__MOODEX_STORAGE_MAP__); } catch (_) {}
+          try { window.electronAPI.storageSaveSync(window.__MOODEX_STORAGE_MAP__); } catch (_) { }
         }
       }
       showToast('Account imported! Restarting...', 'success');
@@ -21168,8 +21168,8 @@ function bindCoverHoldZoom(wrapEl) {
     for (let i = 0; i < barCount; i++) {
       const t = i / barCount;
       const env = Math.sin(t * Math.PI) * 0.45 + 0.35 +
-                  0.15 * Math.sin(t * Math.PI * 4.2) +
-                  0.1 * Math.sin(t * Math.PI * 7.8);
+        0.15 * Math.sin(t * Math.PI * 4.2) +
+        0.1 * Math.sin(t * Math.PI * 7.8);
       const noise = pseudoRandom() * 0.45 + 0.15;
       const val = Math.max(0.12, Math.min(0.96, env * noise * 1.25));
       peaks[i] = Math.round(val * 100) / 100;
@@ -21179,7 +21179,7 @@ function bindCoverHoldZoom(wrapEl) {
       boundMap(waveformPeakCache, 20);
     }
 
-    
+
     (async () => {
       try {
         let targetUrl = '';
@@ -21202,7 +21202,7 @@ function bindCoverHoldZoom(wrapEl) {
         if (!ab || ab.byteLength === 0) return;
         const ctx = new (window.AudioContext || window.webkitAudioContext)();
         const audioBuffer = await ctx.decodeAudioData(ab.slice(0)).catch(() => null);
-        ctx.close().catch(() => {});
+        ctx.close().catch(() => { });
         if (!audioBuffer) return;
 
         const channelData = audioBuffer.getChannelData(0);
@@ -21229,7 +21229,7 @@ function bindCoverHoldZoom(wrapEl) {
             renderTrimmerWaveform();
           }
         }
-      } catch (_) {}
+      } catch (_) { }
     })();
 
     return peaks;
@@ -21370,7 +21370,7 @@ function bindCoverHoldZoom(wrapEl) {
               btnDeleteOfflineTrack.classList.remove('hidden');
             }
           })
-          .catch(() => {});
+          .catch(() => { });
       }
     }
 
@@ -21448,7 +21448,7 @@ function bindCoverHoldZoom(wrapEl) {
     const stopDragLeft = (e) => {
       if (!isDraggingLeft) return;
       isDraggingLeft = false;
-      try { ccHandleLeft.releasePointerCapture(e.pointerId); } catch (_) {}
+      try { ccHandleLeft.releasePointerCapture(e.pointerId); } catch (_) { }
       ccHandleLeft.classList.remove('dragging');
     };
     ccHandleLeft.addEventListener('pointerup', stopDragLeft);
@@ -21476,7 +21476,7 @@ function bindCoverHoldZoom(wrapEl) {
     const stopDragRight = (e) => {
       if (!isDraggingRight) return;
       isDraggingRight = false;
-      try { ccHandleRight.releasePointerCapture(e.pointerId); } catch (_) {}
+      try { ccHandleRight.releasePointerCapture(e.pointerId); } catch (_) { }
       ccHandleRight.classList.remove('dragging');
     };
     ccHandleRight.addEventListener('pointerup', stopDragRight);
@@ -21545,7 +21545,7 @@ function bindCoverHoldZoom(wrapEl) {
       if (cid) {
         const all = getTrackTrims();
         delete all[cid];
-        try { localStorage.setItem('moodex_track_trims', JSON.stringify(all)); } catch (_) {}
+        try { localStorage.setItem('moodex_track_trims', JSON.stringify(all)); } catch (_) { }
       }
       trimDraft.start = 0;
       trimDraft.end = trimDraft.dur;
@@ -21585,7 +21585,7 @@ function bindCoverHoldZoom(wrapEl) {
 
   function cancelCurrentDownload() {
     if (downloadAbort) {
-      try { downloadAbort.abort(); } catch (_) {}
+      try { downloadAbort.abort(); } catch (_) { }
       downloadAbort = null;
       const curSpinner = el.downloadSpinner || document.getElementById('download-spinner');
       if (curSpinner) curSpinner.innerHTML = '';
@@ -21821,7 +21821,7 @@ function bindCoverHoldZoom(wrapEl) {
             if (checkData && checkData.cached) {
               audioSourceUrl = `http://127.0.0.1:${state.serverPort}/api/local-track?id=${encodeURIComponent(t.id)}`;
             }
-          } catch (_) {}
+          } catch (_) { }
         }
 
         if (!audioSourceUrl) {
@@ -21944,7 +21944,7 @@ function bindCoverHoldZoom(wrapEl) {
         analysisCache.set(cleanId, parsed);
         return parsed;
       }
-    } catch (e) {}
+    } catch (e) { }
     return null;
   }
 
@@ -21958,18 +21958,18 @@ function bindCoverHoldZoom(wrapEl) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: cleanId, analysis })
-      }).catch(() => {});
-    } catch (e) {}
+      }).catch(() => { });
+    } catch (e) { }
   }
 
   function getTrackNormalizedKey(artist, title) {
     let a = String(artist || '').toLowerCase();
     let t = String(title || '').toLowerCase();
     t = t.replace(/\s*\([^)]*official[^)]*\)/gi, '')
-         .replace(/\s*\[[^\]]*\]/gi, '')
-         .replace(/\s*\([^)]*(video|audio|remaster(ed)?|lyrics?|visualizer)[^)]*\)/gi, '');
+      .replace(/\s*\[[^\]]*\]/gi, '')
+      .replace(/\s*\([^)]*(video|audio|remaster(ed)?|lyrics?|visualizer)[^)]*\)/gi, '');
     t = t.replace(/\s*(feat\.?|ft\.?)\s+[^(\[-]+/gi, '')
-         .replace(/\s*\((feat\.?|ft\.?)[^)]*\)/gi, '');
+      .replace(/\s*\((feat\.?|ft\.?)[^)]*\)/gi, '');
     a = a.replace(/\s*(feat\.?|ft\.?)\s+.*$/gi, '');
     a = a.replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim();
     t = t.replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim();
@@ -22008,7 +22008,7 @@ function bindCoverHoldZoom(wrapEl) {
     }
     try {
       localStorage.setItem(WAVE_SKIPS_KEY, JSON.stringify(skips));
-    } catch (e) {}
+    } catch (e) { }
   }
 
   function getBlockedArtists() {
@@ -22733,7 +22733,7 @@ function bindCoverHoldZoom(wrapEl) {
         }
         return true;
       }
-    } catch (_) {} finally { state._waveReplenishBusy = false; }
+    } catch (_) { } finally { state._waveReplenishBusy = false; }
     return false;
   }
 
@@ -23354,10 +23354,10 @@ function bindCoverHoldZoom(wrapEl) {
           }
           if (uniqueTracks.length > 0) {
             state.vibeTracks = uniqueTracks;
-            try { localStorage.setItem('moodex_my_wave_cache', JSON.stringify({ ts: Date.now(), tracks: state.vibeTracks })); } catch (_) {}
+            try { localStorage.setItem('moodex_my_wave_cache', JSON.stringify({ ts: Date.now(), tracks: state.vibeTracks })); } catch (_) { }
           }
         }
-      } catch (_) {}
+      } catch (_) { }
 
       state.isHotPicks = false;
       state.hotPicksTitle = '';
@@ -23371,7 +23371,7 @@ function bindCoverHoldZoom(wrapEl) {
             state.isHotPicks = true;
             state.hotPicksTitle = hotData.title || `Hot picks ${new Date().getFullYear()}`;
           }
-        } catch (_) {}
+        } catch (_) { }
       }
 
       if (uniqueTracks.length === 0) {
@@ -23404,7 +23404,7 @@ function bindCoverHoldZoom(wrapEl) {
 
       myWaveCurrentTracks = uniqueTracks;
       state.vibeTracks = uniqueTracks;
-      try { localStorage.setItem('moodex_my_wave_cache', JSON.stringify({ ts: Date.now(), tracks: state.vibeTracks })); } catch (_) {}
+      try { localStorage.setItem('moodex_my_wave_cache', JSON.stringify({ ts: Date.now(), tracks: state.vibeTracks })); } catch (_) { }
       currentWaveFocusedIndex = 0;
       if (homeMode === 'wave') {
         if (vibeGrid) {
@@ -23687,7 +23687,7 @@ function bindCoverHoldZoom(wrapEl) {
       if (data && data.success && Array.isArray(data.tracks) && data.tracks.length > 0) {
         try {
           localStorage.setItem('moodex_trending_cache', JSON.stringify({ ts: Date.now(), tracks: data.tracks }));
-        } catch (_) {}
+        } catch (_) { }
         renderTrendingCards(row, data.tracks);
         sec.hidden = false;
       } else if (!hasCachedTracks) {
@@ -23807,7 +23807,7 @@ function bindCoverHoldZoom(wrapEl) {
     try {
       const raw = localStorage.getItem(MIX_KEY);
       if (raw) cached = JSON.parse(raw);
-    } catch (_) {}
+    } catch (_) { }
 
     if (!force && cached && cached.day === today && Array.isArray(cached.mixes)) {
       return cached;
@@ -23820,7 +23820,7 @@ function bindCoverHoldZoom(wrapEl) {
     let buckets = [];
     try {
       buckets = await planMixes();
-    } catch (_) {}
+    } catch (_) { }
 
     state._plannedMixCount = buckets.length;
     if (typeof renderMadeForYou === 'function') renderMadeForYou();
@@ -23893,7 +23893,7 @@ function bindCoverHoldZoom(wrapEl) {
     try {
       const raw = localStorage.getItem(MIX_KEY);
       if (raw) cached = JSON.parse(raw);
-    } catch (_) {}
+    } catch (_) { }
 
     const mixes = (cached && cached.day === today && Array.isArray(cached.mixes)) ? cached.mixes : [];
     const hasWave = Array.isArray(myWaveCurrentTracks) && myWaveCurrentTracks.length > 0;
@@ -24013,7 +24013,7 @@ function bindCoverHoldZoom(wrapEl) {
   if (btnRegenMixes) {
     btnRegenMixes.addEventListener('click', (e) => {
       e.stopPropagation();
-      fetchPersonalVibe(true).catch(() => {});
+      fetchPersonalVibe(true).catch(() => { });
       if (state.mixesBusy) return;
       localStorage.removeItem(MIX_KEY);
       generateDailyMixes(true);
@@ -24385,7 +24385,7 @@ function bindCoverHoldZoom(wrapEl) {
       if (!window.electronAPI || !window.electronAPI.pickDataDir) return;
       if (btnChangeMusicFolder.disabled) return;
       let info = null;
-      try { info = await window.electronAPI.getDataDir(); } catch (e) {}
+      try { info = await window.electronAPI.getDataDir(); } catch (e) { }
       const dir = await window.electronAPI.pickDataDir();
       if (!dir) return;
       if (info && info.dir && dir === info.dir) {
@@ -24446,7 +24446,7 @@ function bindCoverHoldZoom(wrapEl) {
       if (!window.electronAPI || !window.electronAPI.pickDownloadDir) return;
       if (btnChangeDownloadFolder.disabled) return;
       let info = null;
-      try { info = await window.electronAPI.getDownloadDir(); } catch (e) {}
+      try { info = await window.electronAPI.getDownloadDir(); } catch (e) { }
       const dir = await window.electronAPI.pickDownloadDir();
       if (!dir) return;
       if (info && info.dir && dir === info.dir) {
@@ -24706,7 +24706,7 @@ function bindCoverHoldZoom(wrapEl) {
           clearInterval(toolsPollInterval);
           toolsPollInterval = null;
         }
-      } catch (e) {}
+      } catch (e) { }
     }, 500);
   }
 
@@ -24731,7 +24731,7 @@ function bindCoverHoldZoom(wrapEl) {
 
     if (state.serverPort) {
       fetch(`http://127.0.0.1:${state.serverPort}/api/tools/install`, { method: 'POST' }).catch(() => {
-        fetch(`http://127.0.0.1:${state.serverPort}/api/tools-install`, { method: 'POST' }).catch(() => {});
+        fetch(`http://127.0.0.1:${state.serverPort}/api/tools-install`, { method: 'POST' }).catch(() => { });
       });
     }
     pollToolsStatus();
@@ -24758,7 +24758,7 @@ function bindCoverHoldZoom(wrapEl) {
           closeModal(modal);
         }
       }
-    } catch (e) {}
+    } catch (e) { }
   }
 
   const btnInstallTools = document.getElementById('btn-install-tools');
@@ -25194,7 +25194,7 @@ function bindCoverHoldZoom(wrapEl) {
           return valid;
         }
       }
-    } catch (_) {}
+    } catch (_) { }
     return [...DEFAULT_SIDEBAR_ORDER];
   }
 
@@ -25236,7 +25236,7 @@ function bindCoverHoldZoom(wrapEl) {
           return valid;
         }
       }
-    } catch (_) {}
+    } catch (_) { }
     return [...DEFAULT_HOME_ORDER];
   }
 
@@ -25253,7 +25253,7 @@ function bindCoverHoldZoom(wrapEl) {
   }
 
   function makeCustomizerList(container, getOrderFn, saveKey, defsMap, applyFn) {
-    if (!container) return () => {};
+    if (!container) return () => { };
     const render = () => {
       const currentOrder = getOrderFn();
       container.innerHTML = '';
