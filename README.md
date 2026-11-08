@@ -1,21 +1,18 @@
 <p align="center">
-  <img src="assets/logo.png" alt="Moodex — Feel Every Beat. Own Every Mood. 🎧" width="180">
+  <img src="assets/logo.png" alt="MeloDiX — Your Music. Your World 🎧" width="180">
 </p>
 
 <p align="center">
-  <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/windows8/windows8-original.svg" width="22" height="22" alt="Windows">&nbsp;&nbsp;
-  <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/apple/apple-original.svg" width="22" height="22" alt="macOS">&nbsp;&nbsp;
-  <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/linux/linux-original.svg" width="22" height="22" alt="Linux">&nbsp;&nbsp;
-  <img src="https://cdn.simpleicons.org/ios/9ca3af" width="22" height="22" alt="iOS">&nbsp;&nbsp;
-  <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/android/android-original.svg" width="22" height="22" alt="Android">
+  <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/windows8/windows8-original.svg" width="22" height="22" alt="Windows">
 </p>
 
 <h1 align="center">
-  <img src="github/readme/emoj2i.gif" width="48" height="48" align="absmiddle" alt="emoji">&nbsp;Moodex
+  <img src="github/readme/emoj2i.gif" width="60" height="40" align="absmiddle" alt="emoji">&nbsp;Melodix
 </h1>
 
 <p align="center">
-  <b>A free, open-source desktop music player for YouTube Music, SoundCloud, and local files.</b><br>
+  <b>Your Music. Your World.</b><br>
+  A free, open-source desktop music player for YouTube Music, SoundCloud, and local files.<br>
   Built with Material Design 3, no tracking, and no account needed.
 </p>
 

@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Moodex</title>
+  <title>Melodix</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link
@@ -46,9 +46,9 @@
 
   <header class="titlebar" id="titlebar">
     <div class="titlebar-drag">
-      <div class="app-logo" aria-label="Moodex">
+      <div class="app-logo" aria-label="Melodix">
         <span class="titlebar-moodex-icon"></span>
-        <span class="titlebar-wordmark">Moodex</span>
+        <span class="titlebar-wordmark">Melodix</span>
       </div>
     </div>
     <div class="titlebar-controls window-controls">
@@ -148,7 +148,8 @@
       </div>
       <div class="sidebar-brand" aria-hidden="true">
         <img class="sidebar-brand-logo" src="../../assets/home.svg" alt="" draggable="false" decoding="async" />
-        <span class="sidebar-brand-name">MoodeX</span>
+        <span class="sidebar-brand-name">MeloDiX</span>
+        <span class="sidebar-brand-tagline">Your Music. Your World.</span>
       </div>
       <nav class="sidebar-nav">
         <div class="nav-active-indicator" id="nav-active-indicator"></div>
@@ -565,7 +566,7 @@
             <div class="wrapped-hero-copy">
               <span class="wrapped-eyebrow" id="wrapped-period">Your listening</span>
               <h2 class="wrapped-title" data-i18n>Wrapped</h2>
-              <p class="wrapped-sub" data-i18n>A running picture of what you have been playing in Moodex.</p>
+              <p class="wrapped-sub" data-i18n>A running picture of what you have been playing in Melodix.</p>
             </div>
             <button class="btn-outline-pill" id="btn-reset-wrapped" data-i18n>Reset stats</button>
           </div>
@@ -1150,8 +1151,8 @@
                     <div class="settings-section-title">Custom themes</div>
                     <div
                       style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-on-surface-variant); font-weight: normal; line-height: 1.4;">
-                      Add a .css file to restyle Moodex.<br>
-                      Tip: Moodex sets its color variables from JavaScript, so a theme must use !important to override
+                      Add a .css file to restyle Melodix.<br>
+                      Tip: Melodix sets its color variables from JavaScript, so a theme must use !important to override
                       them (for example --md-sys-color-primary: #ff4081 !important).<br>
                       Ctrl+Shift+R turns every custom theme and CSS off if something breaks.
                     </div>
@@ -1166,7 +1167,7 @@
                   <div>
                     <div class="settings-section-title">Plugins</div>
                     <div class="setting-hint"><span class="plugins-warn">Plugins are JavaScript files with full access
-                        to Moodex.</span> Only add plugins you trust. They live in the plugins folder: delete a file and
+                        to Melodix.</span> Only add plugins you trust. They live in the plugins folder: delete a file and
                       the plugin is gone. Ctrl+Shift+R turns every plugin off.</div>
                   </div>
                   <div class="ct-actions"><button class="btn-outline-pill" id="btn-plugins-folder">Open
@@ -1921,7 +1922,7 @@
                       <div style="display: flex; flex-direction: column; gap: 2px;">
                         <span class="setting-name" data-i18n>Show artist in Discord status</span>
                         <span class="setting-hint" data-i18n>Display "Listening to Artist" instead of "Listening to
-                          Moodex" in compact profile status</span>
+                          Melodix" in compact profile status</span>
                       </div>
                       <button type="button" class="effect-switch-btn active" id="btn-discord-artist-status"><span
                           class="thumb"></span></button>
@@ -2254,7 +2255,7 @@
                           </svg>
                         </div>
                         <div style="display: flex; flex-direction: column;">
-                          <span class="setting-name">Export Moodex account (.mdacc)</span>
+                          <span class="setting-name">Export Melodix account (.mdacc)</span>
                           <span
                             style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Backup
                             full library, playlists, settings and history</span>
@@ -2278,7 +2279,7 @@
                           </svg>
                         </div>
                         <div style="display: flex; flex-direction: column;">
-                          <span class="setting-name">Import Moodex account (.mdacc)</span>
+                          <span class="setting-name">Import Melodix account (.mdacc)</span>
                           <span
                             style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Restore
                             entire account from encrypted binary backup</span>
@@ -2312,7 +2313,7 @@
                           <line x1="12" y1="9" x2="12" y2="13"></line>
                           <line x1="12" y1="17" x2="12.01" y2="17"></line>
                         </svg>
-                        <span><strong>These settings change how Moodex looks and performs.</strong> Everything here is
+                        <span><strong>These settings change how Melodix looks and performs.</strong> Everything here is
                           safe to experiment with and every control can be put back, but the defaults are what most
                           people want.</span>
                       </div>
@@ -2574,7 +2575,7 @@
                           <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
                             <div style="display: flex; flex-direction: column; gap: 2px;">
                               <span class="setting-name">Create desktop & app menu shortcut</span>
-                              <span class="setting-hint">Add Moodex shortcut to your desktop and system applications
+                              <span class="setting-hint">Add Melodix shortcut to your desktop and system applications
                                 menu</span>
                             </div>
                             <button type="button" class="btn-outline-pill" id="btn-create-shortcut"
@@ -2585,7 +2586,7 @@
                           <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
                             <div style="display: flex; flex-direction: column; gap: 2px;">
                               <span class="setting-name" data-i18n>In-app proxy (YouTube / SoundCloud bypass)</span>
-                              <span class="setting-hint" data-i18n>Route Moodex audio and stream extraction through a
+                              <span class="setting-hint" data-i18n>Route Melodix audio and stream extraction through a
                                 proxy without slowing down your whole system</span>
                             </div>
                             <button class="effect-switch-btn" id="btn-proxy-enable" type="button"
@@ -2677,7 +2678,7 @@
                               <span class="setting-name">Allow multiple instances</span>
                               <span
                                 style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">For
-                                testing: lets you start a second Moodex window. Applies after restart. The second window
+                                testing: lets you start a second Melodix window. Applies after restart. The second window
                                 uses its own clean profile.</span>
                             </div>
                             <button class="effect-switch-btn" id="btn-multi-instance"><span
@@ -2883,12 +2884,12 @@
                               style="display: inline-flex; align-items: center; justify-content: center; gap: 6px;">
                               <img src="../../assets/icon.png" width="16" height="16"
                                 style="border-radius: 4px; object-fit: contain;" alt="">
-                              <span>Moodex</span>
+                              <span>Melodix</span>
                             </button>
                           </div>
                           <div
                             style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline); margin-top: 6px;">
-                            Spotify: rows of mixes and quick access. Moodex: the carousel.</div>
+                            Spotify: rows of mixes and quick access. Melodix: the carousel.</div>
                         </div>
 
                         <div class="setting-item">
@@ -2946,9 +2947,9 @@
                     <div class="mx-sleeve">
                       <div class="mx-sleeve-art"><span class="mx-sleeve-mark"></span></div>
                       <div class="mx-sleeve-meta">
-                        <span class="mx-sleeve-kicker">Moodex Records</span>
-                        <span class="mx-sleeve-title">Moodex</span>
-                        <span class="mx-sleeve-sub" id="about-version">Version 1.1.9</span>
+                        <span class="mx-sleeve-kicker">Melodix Records</span>
+                        <span class="mx-sleeve-title">Melodix</span>
+                        <span class="mx-sleeve-sub" id="about-version">Version 1.1.10</span>
                       </div>
                     </div>
                   </div>
@@ -2986,7 +2987,7 @@
                         </button></li>
                       <li><a class="mx-track" href="https://t.me/moodexplayer" target="_blank" rel="noopener">
                           <span class="mx-tn">05</span>
-                          <span class="mx-tt"><b>Say hi</b><small>Moodex on Telegram</small></span>
+                          <span class="mx-tt"><b>Say hi</b><small>Melodix on Telegram</small></span>
                           <span class="mx-td">t.me</span>
                         </a></li>
                     </ol>
@@ -3010,9 +3011,9 @@
                     <path
                       d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 0 0-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.95-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.2-1.12-.31-1.08-.66.02-.18.27-.36.75-.55 2.92-1.27 4.86-2.11 5.83-2.51 2.78-1.16 3.35-1.36 3.73-1.36.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .4z" />
                   </svg>
-                  Moodex made by MoOdY69...
+                  Melodix made by MoOdY69...
                 </span>
-                <span class="settings-version-tag">v1.1.9</span>
+                <span class="settings-version-tag">v1.1.10</span>
               </div>
             </div>
           </div>
@@ -3307,7 +3308,7 @@
 
       <div class="cache-header">
         <h2>Clear Cache</h2>
-        <p>Clear cache and free up your storage, don't do it too often because Moodex will get laggy.</p>
+        <p>Clear cache and free up your storage, don't do it too often because Melodix will get laggy.</p>
       </div>
 
       <div class="cache-stats-container">
@@ -3775,7 +3776,7 @@
       </div>
       <p id="tools-modal-desc"
         style="margin: 0; color: var(--md-sys-color-on-surface-variant); font-size: calc(13px * var(--font-scale, 1)); line-height: 1.4;">
-        Moodex needs yt-dlp and ffmpeg to play and save tracks (~400 MB).</p>
+        Melodix needs yt-dlp and ffmpeg to play and save tracks (~400 MB).</p>
 
       <div class="tools-list" style="display: flex; flex-direction: column; gap: 10px; margin-top: 6px;">
         <div class="tools-row" id="tools-row-ytdlp"
@@ -3982,7 +3983,7 @@
             <line x1="12" y1="9" x2="12" y2="13"></line>
             <line x1="12" y1="17" x2="12.01" y2="17"></line>
           </svg>
-          <span>We don't steal anything, and Moodex is open-source. Want to import everything? Use the export files (or
+          <span>We don't steal anything, and Melodix is open-source. Want to import everything? Use the export files (or
             log in, if you set that up). Want zero risk? Import a single playlist by link instead.</span>
         </div>
       </div>
@@ -4021,7 +4022,7 @@
             <line x1="12" y1="9" x2="12" y2="13"></line>
             <line x1="12" y1="17" x2="12.01" y2="17"></line>
           </svg>
-          <span>We don't steal anything, and Moodex is open-source. Want to import everything? Use the export files (or
+          <span>We don't steal anything, and Melodix is open-source. Want to import everything? Use the export files (or
             log in, if you set that up). Want zero risk? Import a single playlist by link instead.</span>
         </div>
       </div>
@@ -4127,7 +4128,7 @@
             <line x1="12" y1="9" x2="12" y2="13"></line>
             <line x1="12" y1="17" x2="12.01" y2="17"></line>
           </svg>
-          <span>We don't steal anything, and Moodex is open-source. Want to import everything? Use the export files.
+          <span>We don't steal anything, and Melodix is open-source. Want to import everything? Use the export files.
             Want zero risk? Import a single playlist by link instead.</span>
         </div>
       </div>
@@ -4232,7 +4233,7 @@
             <line x1="12" y1="9" x2="12" y2="13"></line>
             <line x1="12" y1="17" x2="12.01" y2="17"></line>
           </svg>
-          <span>We don't steal anything, and Moodex is open-source. Want zero risk? Import a single playlist by link
+          <span>We don't steal anything, and Melodix is open-source. Want zero risk? Import a single playlist by link
             instead.</span>
         </div>
       </div>
@@ -4686,7 +4687,7 @@
     </div>
     <div class="ota-center-spinner hidden" id="update-center-spinner">
       <span class="ota-loader-slot" data-moodex-loader="88"></span>
-      <span class="ota-spinner-label" id="update-spinner-label" data-i18n>Updating Moodex...</span>
+      <span class="ota-spinner-label" id="update-spinner-label" data-i18n>Updating Melodix...</span>
     </div>
   </div>
 

@@ -11307,6 +11307,17 @@ body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .sidebar-bra
   letter-spacing: 0.2px;
   color: var(--md-sys-color-on-surface);
 }
+.sidebar-brand-tagline {
+  font-size: calc(10px * var(--font-scale, 1));
+  font-weight: 500;
+  letter-spacing: 0.3px;
+  margin-top: 1px;
+  color: var(--md-sys-color-on-surface-variant, rgba(255,255,255,0.55));
+  opacity: 0.75;
+  text-align: center;
+}
+/* Hidden with labels when the rail is collapsed. */
+.sidebar.rail-collapsed .sidebar-brand-tagline { display: none; }
 
 /* Collapse toggle: tucked into the corner, quiet until hovered. */
 body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .sidebar-rail-toggle {

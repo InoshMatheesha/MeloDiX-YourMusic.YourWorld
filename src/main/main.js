@@ -360,7 +360,7 @@ function runGUI() {
       minWidth: 800,
       minHeight: 540,
                                    backgroundColor: firstRun ? '#8d5ef2' : '#000000',
-                                   title: 'Moodex',
+                                   title: 'Melodix',
                                    icon: path.join(__dirname, '../../assets', 'icon.png'),
                                    frame: false,
                                    titleBarStyle: 'hidden',
@@ -514,7 +514,7 @@ function runGUI() {
     });
 
     ipcMain.handle('get-diagnostics', async () => {
-      const lines = [`Moodex ${app.getVersion()}`, `OS ${process.platform} ${process.arch} ${os.release()}`, `Electron ${process.versions.electron} Chromium ${process.versions.chrome} Node ${process.versions.node}`, `Locale ${app.getLocale()}`, `Data ${DATA_DIR}`];
+      const lines = [`Melodix ${app.getVersion()}`, `OS ${process.platform} ${process.arch} ${os.release()}`, `Electron ${process.versions.electron} Chromium ${process.versions.chrome} Node ${process.versions.node}`, `Locale ${app.getLocale()}`, `Data ${DATA_DIR}`];
       for (const name of ['yt-dlp', 'ffmpeg']) {
         const bin = resolveBinary(name);
         lines.push(`${name}: ${bin || 'NOT FOUND'}`);
@@ -1324,9 +1324,9 @@ function runGUI() {
         try {
           const win = BrowserWindow.fromWebContents(event.sender) || mainWindow;
           const r = await dialog.showSaveDialog(win, {
-            title: 'Export Moodex account',
+            title: 'Export Melodix account',
             defaultPath: 'moodex-account.mdacc',
-            filters: [{ name: 'Moodex Account (.mdacc)', extensions: ['mdacc'] }]
+            filters: [{ name: 'Melodix Account (.mdacc)', extensions: ['mdacc'] }]
           });
           if (r.canceled || !r.filePath) return { canceled: true };
           const buffer = encryptAccount(payload || {});
@@ -1341,9 +1341,9 @@ function runGUI() {
         try {
           const win = BrowserWindow.fromWebContents(event.sender) || mainWindow;
           const r = await dialog.showOpenDialog(win, {
-            title: 'Import Moodex account',
+            title: 'Import Melodix account',
             properties: ['openFile'],
-            filters: [{ name: 'Moodex Account (.mdacc)', extensions: ['mdacc'] }]
+            filters: [{ name: 'Melodix Account (.mdacc)', extensions: ['mdacc'] }]
           });
           if (r.canceled || !r.filePaths || !r.filePaths.length) return { canceled: true };
           const buffer = await fs.promises.readFile(r.filePaths[0]);
@@ -1797,7 +1797,7 @@ function runGUI() {
           let trayIcon = nativeImage.createFromPath(iconPath);
           trayIcon = trayIcon.resize({ width: 22, height: 22 });
           tray = new Tray(trayIcon);
-          tray.setToolTip('Moodex');
+          tray.setToolTip('Melodix');
           const contextMenu = Menu.buildFromTemplate([
             {
               label: 'Show/Hide',

@@ -870,7 +870,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const rawArtist = (typeof current.artist === 'string' ? current.artist.trim() : '');
       const title = rawTitle || 'Unknown track';
       const artist = rawArtist || 'Unknown artist';
-      const album = current.album || 'Moodex';
+      const album = current.album || 'Melodix';
       const thumb = (typeof getTrackThumbUrl === 'function' ? getTrackThumbUrl(current) : '') || current.thumbnail || current.cover || '';
       const artwork = getMediaArtwork(thumb);
       navigator.mediaSession.metadata = new MediaMetadata({
@@ -9277,7 +9277,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     return x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
   }
 
-  // --- Moodex logo loader -------------------------------------------------
+  // --- Melodix logo loader -------------------------------------------------
   // One loader everywhere: the four waveform bars bounce like an equaliser,
   // the M draws itself in the accent gradient, its fill breathes in behind the
   // stroke and a highlight sweeps across. Pure CSS animation (no per-frame JS).
@@ -9875,7 +9875,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       items.push({
         id: 'remove-local',
         danger: true,
-        label: 'Remove from Moodex',
+        label: 'Remove from Melodix',
         icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>',
         action: () => {
           removeTracksFromLocalLibrary([track]);
@@ -17383,7 +17383,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (loadedPlugins.has(p.file)) return;
     try {
       const api = createPluginApi(p);
-      // Moodex is the primary API handle; Riff kept as an alias for older plugins
+      // Melodix is the primary API handle; Riff kept as an alias for older plugins
       const fn = new Function('Moodex', 'Riff', 'plugin', `${p.code}\n//# sourceURL=moodex-plugin-${p.file}`);
       const result = fn(api, api, api.plugin);
       loadedPlugins.set(p.file, { stop: result && typeof result.stop === 'function' ? result.stop : null });
@@ -17396,7 +17396,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.querySelectorAll(`style[data-plugin="${p.file}"]`).forEach((n) => n.remove());
     const hadStop = !!(entry && entry.stop);
     loadedPlugins.delete(p.file);
-    if (!silent && !hadStop) showToast(`Restart Moodex to fully unload "${p.name}"`, 'info');
+    if (!silent && !hadStop) showToast(`Restart Melodix to fully unload "${p.name}"`, 'info');
   }
   let pluginsCache = [];
   function renderPluginCards() {
@@ -17666,7 +17666,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const btnConfirm = document.getElementById('btn-confirm-spotify-import');
       if (btnConfirm) btnConfirm.click();
     }
-    showToast('Welcome to Moodex!', 'info');
+    showToast('Welcome to Melodix!', 'info');
   }
   if (window.electronAPI && window.electronAPI.onWelcomeResult) window.electronAPI.onWelcomeResult((d) => applyWelcomeResult(d));
 
@@ -18393,7 +18393,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   (function initUpdateUI() {
     const api = window.electronAPI;
     const $ = (id) => document.getElementById(id);
-    let currentAppVersion = '1.1.9';
+    let currentAppVersion = '1.1.10';
     if (api && api.getAppVersion) {
       api.getAppVersion().then((v) => {
         if (v) {
@@ -18556,7 +18556,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           restoreButton();
         } else {
           restoreButton();
-          showToast('You are using the latest version of Moodex!', 'success');
+          showToast('You are using the latest version of Melodix!', 'success');
         }
       } catch (err) {
         restoreButton();
@@ -18656,7 +18656,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const wasManual = manualUpdateCheck;
         restoreButton();
         if (wasManual) {
-          showToast('You are using the latest version of Moodex!', 'success');
+          showToast('You are using the latest version of Melodix!', 'success');
         }
       });
     }
@@ -21121,7 +21121,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (typeof showToast === 'function') showToast('No playlists to export', 'error');
       return;
     }
-    let appVer = '1.1.9';
+    let appVer = '1.1.10';
     try {
       if (window.electronAPI && window.electronAPI.getAppVersion) {
         const v = await window.electronAPI.getAppVersion();
@@ -21296,7 +21296,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     btnImportJsonPlaylists.addEventListener('click', triggerJsonPlaylistImport);
   }
 
-  function confirmChain({ title = 'Import Moodex account', message = 'Importing an account will replace your existing playlists, favorites, custom styles, and settings. Moodex will restart immediately.', confirmLabel = 'Import & Restart', seconds = 3 } = {}) {
+  function confirmChain({ title = 'Import Melodix account', message = 'Importing an account will replace your existing playlists, favorites, custom styles, and settings. Melodix will restart immediately.', confirmLabel = 'Import & Restart', seconds = 3 } = {}) {
     return new Promise((resolve) => {
       let modal = document.getElementById('confirm-chain-modal');
       if (!modal) {
@@ -21386,8 +21386,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (btnImportAccount) {
     btnImportAccount.onclick = async () => {
       const confirmed = await confirmChain({
-        title: 'Import Moodex account',
-        message: 'Importing an account will replace your existing playlists, favorites, custom styles, and settings. Moodex will restart immediately.',
+        title: 'Import Melodix account',
+        message: 'Importing an account will replace your existing playlists, favorites, custom styles, and settings. Melodix will restart immediately.',
         confirmLabel: 'Import & Restart',
         seconds: 3
       });
@@ -24027,7 +24027,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       img.loading = 'lazy';
       img.decoding = 'async';
       img.alt = '';
-      // Show a branded Moodex tile instead of a broken-image icon
+      // Show a branded Melodix tile instead of a broken-image icon
       if (!cover) coverWrap.classList.add('sp-cover-fallback');
       else {
         img.src = cover;
@@ -24629,22 +24629,22 @@ document.addEventListener('DOMContentLoaded', async () => {
     const sp = (localStorage.getItem('moodex_home_layout') || 'spotify') === 'spotify';
     document.body.classList.toggle('home-spotify', sp);
     const btnSp = document.getElementById('home-layout-spotify');
-    const btnMoodex = document.getElementById('home-layout-moodex');
+    const btnMelodix = document.getElementById('home-layout-moodex');
     if (btnSp) btnSp.classList.toggle('active', sp);
-    if (btnMoodex) btnMoodex.classList.toggle('active', !sp);
+    if (btnMelodix) btnMelodix.classList.toggle('active', !sp);
     if (sp) renderSpotifyHome();
   }
 
   const btnHomeSpotify = document.getElementById('home-layout-spotify');
-  const btnHomeMoodex = document.getElementById('home-layout-moodex');
+  const btnHomeMelodix = document.getElementById('home-layout-moodex');
   if (btnHomeSpotify) {
     btnHomeSpotify.addEventListener('click', () => {
       localStorage.setItem('moodex_home_layout', 'spotify');
       applyHomeLayout();
     });
   }
-  if (btnHomeMoodex) {
-    btnHomeMoodex.addEventListener('click', () => {
+  if (btnHomeMelodix) {
+    btnHomeMelodix.addEventListener('click', () => {
       localStorage.setItem('moodex_home_layout', 'moodex');
       applyHomeLayout();
     });
@@ -24942,7 +24942,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
       const move = window.confirm(
         'Move your existing music to the new folder?\n\n' +
-        'OK: move all downloaded and imported files, then restart Moodex.\n' +
+        'OK: move all downloaded and imported files, then restart Melodix.\n' +
         'Cancel: switch to the new folder without moving (files stay in the old one).'
       );
       btnChangeMusicFolder.disabled = true;
@@ -24962,7 +24962,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         return;
       }
       btnChangeMusicFolder.textContent = 'Restarting...';
-      showToast('Restarting Moodex...');
+      showToast('Restarting Melodix...');
       setTimeout(() => { if (window.electronAPI.restartApp) window.electronAPI.restartApp(); }, 400);
     });
   }
