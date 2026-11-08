@@ -1,6 +1,6 @@
 {
   "name": "moodex",
-  "version": "1.1.4",
+  "version": "1.1.5",
   "main": "src/main/main.js",
   "bin": {
     "moodex": "src/main/cli.js"
@@ -65,13 +65,16 @@
           ]
         }
       ],
-      "icon": "assets/icon.png"
+      "icon": "assets/icon.ico"
     },
     "nsis": {
       "oneClick": true,
       "perMachine": false,
       "deleteAppDataOnUninstall": false,
-      "artifactName": "${name}-${version}-win-${arch}-setup.${ext}"
+      "artifactName": "${name}-${version}-win-${arch}-setup.${ext}",
+      "installerIcon": "assets/icon.ico",
+      "uninstallerIcon": "assets/icon.ico",
+      "installerHeaderIcon": "assets/icon.ico"
     },
     "linux": {
       "target": [

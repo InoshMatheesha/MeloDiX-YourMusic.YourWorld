@@ -16445,7 +16445,10 @@ document.addEventListener('DOMContentLoaded', async () => {
       // Keep the legacy wavy flag in step so perf mode and old code agree.
       try { localStorage.setItem('moodex_wavy_progress', state.progressStyle === 'wave' ? 'true' : 'false'); } catch (_) { }
       if (typeof updateWavyProgressUI === 'function') updateWavyProgressUI();
+      // While paused the render loop has stopped after its last frame, so
+      // restart it once; otherwise the playbar keeps the old style until play.
       hasDrawnPausedFrame = false;
+      if (typeof startVisualizers === 'function') startVisualizers();
       paint();
     });
     paint();
@@ -18134,7 +18137,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   (function initUpdateUI() {
     const api = window.electronAPI;
     const $ = (id) => document.getElementById(id);
-    let currentAppVersion = '1.1.4';
+    let currentAppVersion = '1.1.5';
     if (api && api.getAppVersion) {
       api.getAppVersion().then((v) => {
         if (v) {
@@ -20862,7 +20865,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (typeof showToast === 'function') showToast('No playlists to export', 'error');
       return;
     }
-    let appVer = '1.1.4';
+    let appVer = '1.1.5';
     try {
       if (window.electronAPI && window.electronAPI.getAppVersion) {
         const v = await window.electronAPI.getAppVersion();
@@ -25120,7 +25123,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const cat = document.getElementById('mx-catalog');
         if (cat) cat.textContent = 'MDX-' + v.replace(/\./g, '') + ' · Side A';
         const bc = document.getElementById('mx-barcode-text');
-        if (bc) bc.textContent = 'MDX ' + v + ' · MADE BY ROOTLESS';
+        if (bc) bc.textContent = 'MDX ' + v + ' · MADE BY MOODY69';
       }
       const art = document.getElementById('mx-vinyl-art');
       const tr = state.currentTrack;

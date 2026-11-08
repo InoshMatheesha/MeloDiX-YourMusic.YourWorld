@@ -51,6 +51,15 @@ Moodex is an open-source, telemetry-free desktop music app and player for **Wind
 
 Built with **Electron**, **Vanilla JavaScript**, and **WebGL**, Moodex provides responsive UI interactions and hardware-accelerated audio visualization without runtime framework overhead. The project is distributed under the **MIT license** and enforces strict privacy: all configuration, cached streams, and playback history remain strictly on the local machine.
 
+## What's new in v1.1.5
+
+- **Progress bar style applies immediately.** Picking a style while music was
+  paused did nothing until you pressed play, because the paused playbar stops
+  redrawing. It now redraws straight away.
+- **App, setup and uninstaller use the new icon.** Builds now use a
+  multi-size `assets/icon.ico` (16-256px) generated from `assets/icon.png`.
+  If you replace `icon.png`, regenerate the `.ico` too.
+
 ## What's new in v1.1.4
 
 - **New About page - "Liner notes".** Moodex is presented as a record: a vinyl
