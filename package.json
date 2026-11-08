@@ -1,6 +1,6 @@
 {
   "name": "moodex",
-  "version": "1.1.8",
+  "version": "1.1.9",
   "main": "src/main/main.js",
   "bin": {
     "moodex": "src/main/cli.js"
@@ -114,8 +114,8 @@
     "publish": [
       {
         "provider": "github",
-        "owner": "inoshmatheesha",
-        "repo": "moodex",
+        "owner": "InoshMatheesha",
+        "repo": "Moodex-Music-Player",
         "releaseType": "release"
       }
     ],
