@@ -78,7 +78,7 @@
       </div>
     </div>
 
-    <div class="platform-switch-container">
+    <div class="platform-switch-container" hidden aria-hidden="true">
       <div class="platform-pill-switch">
         <button class="platform-btn" data-platform="youtube" id="platform-yt" title="YouTube">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
@@ -412,7 +412,7 @@
           </div>
           <div class="view-header-actions">
             <button class="btn-outline-pill" id="btn-refresh-downloads" data-i18n>Refresh</button>
-            <button class="btn-outline-pill btn-danger-pill" id="btn-clear-downloads" data-i18n>Clear all</button>
+            <button class="btn-outline-pill" id="btn-open-downloads-folder" data-i18n>Open folder</button>
           </div>
         </div>
         <div class="tracks-list" id="downloads-tracks-list">
@@ -790,13 +790,14 @@
               </select>
               <div class="m3-dropdown" id="engine-api-dropdown">
                 <button class="m3-dropdown-trigger" id="engine-api-trigger" type="button">
-                  <span id="engine-api-label">YouTube Music</span>
+                  <span id="engine-api-label">All sources</span>
                   <svg class="m3-dropdown-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
                 </button>
                 <div class="m3-dropdown-menu" id="engine-api-menu">
-                  <button class="m3-dropdown-option" data-value="youtube" type="button">YouTube</button>
-                  <button class="m3-dropdown-option selected" data-value="ytmusic" type="button">YouTube Music</button>
-                  <button class="m3-dropdown-option" data-value="soundcloud" type="button">SoundCloud</button>
+                  <button class="m3-dropdown-option selected" data-value="all" type="button">All sources (recommended)</button>
+                  <button class="m3-dropdown-option" data-value="youtube" type="button">YouTube only</button>
+                  <button class="m3-dropdown-option" data-value="ytmusic" type="button">YouTube Music only</button>
+                  <button class="m3-dropdown-option" data-value="soundcloud" type="button">SoundCloud only</button>
                 </div>
               </div>
             </div>

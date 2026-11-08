@@ -99,6 +99,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openExternal: (u) => ipcRenderer.send('open-external', u),
   logError: (level, message, stack) => ipcRenderer.send('log-error', { level, message, stack }),
   openLogsFolder: () => ipcRenderer.send('open-logs-folder'),
+  openDownloadsFolder: () => ipcRenderer.send('open-downloads-folder'),
   getDiagnostics: () => ipcRenderer.invoke('get-diagnostics'),
   getAudioOutputInfo: () => ipcRenderer.invoke('get-audio-output-info'),
   googleLogin: () => ipcRenderer.invoke('google-login'),

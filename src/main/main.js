@@ -497,6 +497,12 @@ function runGUI() {
       return lines.join('\n');
     });
     ipcMain.on('open-logs-folder', () => { shell.openPath(LOG_DIR); });
+    ipcMain.on('open-downloads-folder', () => {
+      try {
+        const { resolveDownloadDir } = require('../shared/platform');
+        shell.openPath(resolveDownloadDir() || app.getPath('downloads'));
+      } catch (e) {}
+    });
 
       ipcMain.handle('get-server-port', () => serverPort);
       ipcMain.handle('set-app-proxy', async (event, proxyUrl) => {

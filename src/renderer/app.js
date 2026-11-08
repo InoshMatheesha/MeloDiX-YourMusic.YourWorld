@@ -650,7 +650,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const state = {
     selectedTracks: new Map(),
     lastClickedTrackRow: null,
-    platform: localStorage.getItem('moodex_platform') || 'ytmusic',
+    platform: localStorage.getItem('moodex_platform') || 'all',
     currentView: 'discover',
     previousView: 'discover',
     currentPlaylistId: null,
@@ -1748,7 +1748,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                           downloadsTracksList: document.getElementById('downloads-tracks-list'),
                           downloadsSummary: document.getElementById('downloads-summary'),
                           btnRefreshDownloads: document.getElementById('btn-refresh-downloads'),
-                          btnClearDownloads: document.getElementById('btn-clear-downloads'),
+                          btnOpenDownloadsFolder: document.getElementById('btn-open-downloads-folder'),
                           wrappedStatGrid: document.getElementById('wrapped-stat-grid'),
                           wrappedTopTracks: document.getElementById('wrapped-top-tracks'),
                           wrappedTopArtists: document.getElementById('wrapped-top-artists'),
@@ -10336,7 +10336,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         search: 'No matching tracks. Try a different search',
         favorites: 'No favourites yet. Use the heart on a track to save it',
         playlist: 'This playlist is empty',
-        local: 'Your library is empty. Add some music to get started'
+        local: 'Your library is empty. Add some music to get started',
+        downloads: 'Nothing downloaded yet. Streaming never saves to disk — use the download button on a track to keep a copy.'
       };
       container.innerHTML = `<div class="empty-hint">${emptyMessages[context] || 'No tracks to show'}</div>`;
       return;
@@ -10345,6 +10346,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Warm the cover cache for roughly the first couple of screens so the
     // artwork is already local by the time the rows are scrolled into view.
     prefetchThumbs(tracks, 36);
+    // ...and resolve the stream URLs for the first few, so the common case -
+    // clicking near the top of a fresh result list - plays immediately instead
+    // of waiting several seconds on yt-dlp.
+    warmStreams(tracks, 4);
 
     const itemHeight = 64;
     const overscan = 15;
@@ -11837,6 +11842,42 @@ function renderClickableArtists(container, rawArtist) {
     }
   }
 
+  // Resolving a stream URL means a yt-dlp round trip, which is the few seconds
+  // between clicking a track and hearing it. Warming the top of a list in the
+  // background turns that into a cache hit. Strictly sequential: these are
+  // expensive and must never compete with the track that is already playing.
+  const streamWarmed = new Set();
+  const streamWarmQueue = [];
+  let streamWarmBusy = false;
+
+  async function pumpStreamWarm() {
+    if (streamWarmBusy) return;
+    streamWarmBusy = true;
+    while (streamWarmQueue.length) {
+      const t = streamWarmQueue.shift();
+      try {
+        await fetch(`http://127.0.0.1:${state.serverPort}/api/prefetch?url=${encodeURIComponent(t.url || '')}&id=${encodeURIComponent(t.id || '')}&platform=${encodeURIComponent(t.platform || state.platform)}`);
+      } catch (e) { /* best effort */ }
+    }
+    streamWarmBusy = false;
+  }
+
+  function warmStreams(tracks, limit = 4) {
+    if (!Array.isArray(tracks) || !tracks.length || !state.serverPort) return;
+    if (document.hidden) return;
+    let queued = 0;
+    for (const t of tracks) {
+      if (queued >= limit) break;
+      if (!t || !t.id || t.platform === 'local' || t.isCached) continue;
+      if (streamWarmed.has(t.id)) continue;
+      if (streamWarmed.size > 400) streamWarmed.clear();
+      streamWarmed.add(t.id);
+      streamWarmQueue.push(t);
+      queued++;
+    }
+    if (queued) pumpStreamWarm();
+  }
+
   function prefetchThumbs(tracks, limit = 40) {
     if (!Array.isArray(tracks) || !tracks.length) return;
     if (document.hidden) return; // nothing is about to be seen
@@ -13146,11 +13187,14 @@ function updateNavIndicator(animate) {
   // =====================================================================
   let downloadsLoading = false;
 
-  async function fetchOfflineLibrary() {
+  // Files the user explicitly downloaded. Deliberately NOT the streaming
+  // cache: streaming a track is not downloading it, and listing the cache here
+  // made every played track look like a download.
+  async function fetchDownloads() {
     if (!state.serverPort) return null;
     try {
       // window.fetch is patched app-wide to attach X-Moodex-Token to /api/ URLs.
-      const res = await fetch(`http://127.0.0.1:${state.serverPort}/api/offline-library`);
+      const res = await fetch(`http://127.0.0.1:${state.serverPort}/api/downloads`);
       if (!res.ok) return null;
       return await res.json();
     } catch (e) {
@@ -13182,21 +13226,18 @@ function updateNavIndicator(animate) {
     if (downloadsLoading && !force) return;
     downloadsLoading = true;
     try {
-      const data = await fetchOfflineLibrary();
+      const data = await fetchDownloads();
       const tracks = (data && Array.isArray(data.tracks)) ? data.tracks : [];
       setDownloadsBadge(tracks.length);
 
       if (el.downloadsSummary) {
         el.downloadsSummary.textContent = tracks.length
-          ? `${tracks.length} track${tracks.length === 1 ? '' : 's'} · ${formatBytes(data && data.totalBytes)} on this device`
-          : 'Tracks stored on this device';
+          ? `${tracks.length} file${tracks.length === 1 ? '' : 's'} · ${formatBytes(data && data.totalBytes)} · ${(data && data.dir) || ''}`
+          : 'Nothing downloaded yet — streaming does not save anything here';
       }
-      if (el.btnClearDownloads) el.btnClearDownloads.disabled = tracks.length === 0;
 
       if (el.downloadsTracksList) {
-        // Mark them as local so playback resolves from the cache, not the CDN.
-        const rows = tracks.map(t => Object.assign({}, t, { offline: true }));
-        renderTracks(el.downloadsTracksList, rows, 'local');
+        renderTracks(el.downloadsTracksList, tracks, 'downloads');
       }
     } finally {
       downloadsLoading = false;
@@ -13207,23 +13248,15 @@ function updateNavIndicator(animate) {
     el.btnRefreshDownloads.addEventListener('click', () => renderDownloadsView(true));
   }
 
-  if (el.btnClearDownloads) {
-    el.btnClearDownloads.addEventListener('click', async () => {
-      const ok = typeof showConfirm === 'function'
-        ? await showConfirm('Remove every downloaded track from this device?')
-        : window.confirm('Remove every downloaded track from this device?');
-      if (!ok) return;
-      try {
-        await fetch(`http://127.0.0.1:${state.serverPort}/api/clear-offline-library`, { method: 'POST' });
-      } catch (e) {}
-      renderDownloadsView(true);
-      if (typeof updateOfflineStorageUI === 'function') updateOfflineStorageUI();
+  if (el.btnOpenDownloadsFolder) {
+    el.btnOpenDownloadsFolder.addEventListener('click', () => {
+      window.electronAPI?.openDownloadsFolder?.();
     });
   }
 
   // Keep the rail badge honest without making the user open the page.
   setTimeout(() => {
-    fetchOfflineLibrary().then(d => {
+    fetchDownloads().then(d => {
       if (d && Array.isArray(d.tracks)) setDownloadsBadge(d.tracks.length);
     });
   }, 4000);
@@ -13710,7 +13743,9 @@ function bindCoverHoldZoom(wrapEl) {
 
 
   function setPlatform(platform, triggerSearch = true) {
-    if (!['youtube', 'ytmusic', 'soundcloud'].includes(platform)) platform = 'ytmusic';
+    // 'all' queries YouTube Music, YouTube and SoundCloud together and merges
+    // the results; it is the default now that the UI has no provider switch.
+    if (!['all', 'youtube', 'ytmusic', 'soundcloud'].includes(platform)) platform = 'all';
     state.platform = platform;
     localStorage.setItem('moodex_platform', platform);
 
@@ -13721,8 +13756,8 @@ function bindCoverHoldZoom(wrapEl) {
     const select = document.getElementById('select-engine-api');
     if (select) select.value = platform;
     const label = document.getElementById('engine-api-label');
-    const nameMap = { youtube: 'YouTube', ytmusic: 'YouTube Music', soundcloud: 'SoundCloud' };
-    if (label) label.textContent = nameMap[platform] || 'YouTube';
+    const nameMap = { all: 'All sources', youtube: 'YouTube', ytmusic: 'YouTube Music', soundcloud: 'SoundCloud' };
+    if (label) label.textContent = nameMap[platform] || 'All sources';
     const menu = document.getElementById('engine-api-menu');
     if (menu) {
       menu.querySelectorAll('.m3-dropdown-option').forEach(opt => {
@@ -13735,7 +13770,13 @@ function bindCoverHoldZoom(wrapEl) {
     }
   }
 
-  const savedPlatform = localStorage.getItem('moodex_platform') || 'ytmusic';
+  // Existing installs carry a single-provider choice from the old switcher;
+  // migrate them to unified search once.
+  if (!localStorage.getItem('moodex_unified_migrated')) {
+    localStorage.setItem('moodex_platform', 'all');
+    localStorage.setItem('moodex_unified_migrated', '1');
+  }
+  const savedPlatform = localStorage.getItem('moodex_platform') || 'all';
   setPlatform(savedPlatform, false);
 
   if (el.platformYt) el.platformYt.addEventListener('click', () => setPlatform('youtube'));
@@ -22346,6 +22387,37 @@ function bindCoverHoldZoom(wrapEl) {
         entry.weight += 3;
       });
     }
+
+    // -------------------------------------------------------------------
+    // Observed listening behaviour
+    //
+    // state.history is capped at 100 entries and de-duplicates repeats, so
+    // playing one track two hundred times looks exactly like playing it once.
+    // The play tally does record that, which is the strongest signal of what
+    // somebody actually likes, so fold it in here.
+    //
+    // The weight is log-scaled: the step from 1 to 10 plays should matter far
+    // more than the step from 200 to 300, or a single obsession would crowd
+    // out everything else.
+    // -------------------------------------------------------------------
+    try {
+      const stats = (typeof loadPlayStats === 'function') ? loadPlayStats() : {};
+      const now = Date.now();
+      Object.values(stats).forEach(rec => {
+        if (!rec || !rec.title) return;
+        const res = getOrCreateEntry({
+          title: rec.title,
+          artist: rec.artist,
+          platform: rec.platform || state.platform || 'youtube'
+        });
+        if (!res) return;
+        const plays = Math.max(1, Number(rec.count) || 1);
+        // Decay over ~60 days so old obsessions fade instead of ruling forever.
+        const ageDays = Math.max(0, (now - (rec.lastPlayed || now)) / 86400000);
+        const freshness = Math.pow(0.5, ageDays / 60);
+        res.entry.weight += Math.log2(plays + 1) * 2 * freshness;
+      });
+    } catch (e) { /* stats are an optimisation, never a hard dependency */ }
 
     const artistWeights = {};
     const artistDisplayNames = {};

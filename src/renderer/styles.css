@@ -11275,3 +11275,15 @@ body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .rail-drawer
     left: var(--sidebar-w-collapsed) !important;
   }
 }
+
+/* --------------------------------------------------------------------------
+   Unified search source
+   --------------------------------------------------------------------------
+   Moodex now searches YouTube Music, YouTube and SoundCloud together and
+   merges the results, so the top-bar provider switch has nothing to choose
+   between. The markup stays (Settings still exposes a single-source override
+   for anyone who wants one) but it is no longer shown, and the search field
+   takes the space back.
+   -------------------------------------------------------------------------- */
+
+.platform-switch-container[hidden] { display: none !important; }

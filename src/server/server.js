@@ -635,15 +635,11 @@ async function fetchDirectYoutubeStreamServer(videoId, quality = 'medium') {
     return null;
   }
 
-  // The InnerTube clients above hand back a URL without deciphering YouTube's
-  // `n` parameter, so a good fraction of them are rejected with 403 the moment
-  // anything actually reads from them. The audio proxy used to pipe that 403
-  // body straight into <audio>, which surfaced as a bare "Format error" and
-  // the "Could not play this track" toast.
-  //
-  // Probe the URL here instead. Returning null on a bad one makes every caller
-  // fall through to the yt-dlp path, which does decipher the signature.
-  if (candidate && !(await isPlayableStreamUrl(candidate))) return null;
+  // NOTE: do not "validate" this URL by reading a byte from it. These clients
+  // return a URL whose `n` parameter has not been deciphered, and such a URL
+  // is effectively single-use - probing it consumes the one good read and the
+  // real playback request then gets 403. Reachability is decided by the
+  // caller, which prefers yt-dlp precisely because its URLs are reusable.
   return candidate;
 }
 
@@ -670,7 +666,7 @@ async function isPlayableStreamUrl(streamUrl) {
     let settled = false;
     const done = (v) => { if (!settled) { settled = true; resolve(v); } };
     try {
-      const probe = https.request(streamUrl, { method: 'GET', family: 4, headers, timeout: 4000 }, (r) => {
+      const probe = https.request(streamUrl, { method: 'GET', family: 4, headers, timeout: 2500 }, (r) => {
         const ct = String(r.headers['content-type'] || '');
         const ok = r.statusCode >= 200 && r.statusCode < 300 && /^(audio|video)\//i.test(ct);
         r.destroy();
@@ -1583,6 +1579,15 @@ function directYoutubeSearch(query, isMusic = false, limit = 40) {
   });
 }
 
+// Is a usable yt-dlp present? Cached because resolveBinary touches the disk.
+let _hasYtDlp = null;
+function hasYtDlp() {
+  if (_hasYtDlp === null) {
+    try { _hasYtDlp = !!resolveBinary('yt-dlp'); } catch (e) { _hasYtDlp = false; }
+  }
+  return _hasYtDlp;
+}
+
 function executeYtDlp(args, timeoutMs = 15000, opts = {}) {
   return new Promise((resolve, reject) => {
     const cleanEnv = Object.assign({}, process.env);
@@ -1914,7 +1919,22 @@ async function prefetchTrack(trackUrl, trackId, platform) {
     if (platform === 'soundcloud' || (trackUrl && trackUrl.includes('soundcloud.com'))) {
       streamUrl = await fetchDirectSoundCloudStreamServer(trackUrl || cleanId, '');
     } else if (cleanId && /^[a-zA-Z0-9_-]{11}$/.test(cleanId)) {
-      streamUrl = await fetchDirectYoutubeStreamServer(cleanId, quality);
+      // Must follow the same policy as handleStreamInfo. Prefetching via the
+      // InnerTube path would fill the cache with a single-use URL, and the
+      // click that follows would read it back already spent - which is exactly
+      // the stall this prefetch is meant to remove.
+      if (hasYtDlp()) {
+        try {
+          const out = await executeYtDlp(
+            ['-f', 'ba[abr<=160]/bestaudio[ext=m4a]/bestaudio/best', '--get-url', '--no-warnings',
+             `https://www.youtube.com/watch?v=${cleanId}`],
+            20000
+          );
+          streamUrl = String(out || '').trim().split('\n').map(x => x.trim()).filter(x => x.startsWith('http'))[0] || null;
+        } catch (e) { streamUrl = null; }
+      } else {
+        streamUrl = await fetchDirectYoutubeStreamServer(cleanId, quality);
+      }
     }
     if (streamUrl) {
       const isHls = streamUrl.includes('.m3u8');
@@ -2213,6 +2233,71 @@ async function handleSearch(req, res, query, platform = 'ytmusic', limit = 12, o
 
   const poolCacheKey = `pool:${platform}:${qStr.toLowerCase()}`;
   let pool = searchCache.get(poolCacheKey);
+
+  // ---------------------------------------------------------------------
+  // Unified search
+  //
+  // The UI no longer asks the user to pick a provider up front. 'all' queries
+  // YouTube Music, YouTube and SoundCloud at once, then merges them into a
+  // single relevance-ordered list with duplicates collapsed, so the same song
+  // found on two services appears once (keeping the better-tagged copy).
+  // ---------------------------------------------------------------------
+  if (platform === 'all') {
+    if (!pool || !Array.isArray(pool)) {
+      const [ytm, yt, sc] = await Promise.all([
+        ytmusicSearch(qStr).catch(() => []),
+        directYoutubeSearch(qStr, false, 40).catch(() => []),
+        fetchSoundCloudSearch(qStr, 25).catch(() => [])
+      ]);
+
+      // Lower weight wins. YouTube Music has the cleanest metadata, so it
+      // leads; SoundCloud mostly adds things the other two do not carry.
+      const sources = [
+        { items: ytm || [], weight: 0 },
+        { items: yt || [], weight: 1 },
+        { items: sc || [], weight: 2 }
+      ];
+
+      const seen = new Map();
+      for (const { items, weight } of sources) {
+        items.forEach((t, i) => {
+          if (!t || (!t.title && !t.id)) return;
+          const key = getTrackNormalizedKey(t.artist, t.title) || ('id:' + (t.id || ''));
+          const score = i + weight * 0.5; // rank within source, nudged by source quality
+          const prev = seen.get(key);
+          if (!prev) {
+            seen.set(key, { track: t, score });
+          } else if (score < prev.score) {
+            // Keep the better-ranked copy but don't lose artwork/duration the
+            // other source may have filled in.
+            prev.track = Object.assign({}, prev.track, t, {
+              thumbnail: t.thumbnail || prev.track.thumbnail,
+              duration: t.duration || prev.track.duration
+            });
+            prev.score = score;
+          }
+        });
+      }
+
+      pool = [...seen.values()].sort((a, b) => a.score - b.score).map(e => e.track);
+      searchCache.set(poolCacheKey, pool);
+      setTimeout(() => { searchCache.delete(poolCacheKey); }, 300000);
+    }
+
+    const sliced = pool.slice(offset, offset + limit);
+    await Promise.all(sliced.map(async t => {
+      if (t.isCached === undefined && t.id) t.isCached = !!(await findCachedFile(t.id));
+    }));
+    if (offset === 0 && sliced[0] && sliced[0].url) {
+      prefetchTrack(sliced[0].url, sliced[0].id, sliced[0].platform || 'youtube').catch(() => {});
+    }
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({
+      success: true,
+      tracks: sliced,
+      hasMore: offset + limit < pool.length
+    }));
+  }
 
   if (offset === 0 && (!pool || !Array.isArray(pool))) {
     if (platform === 'soundcloud') {
@@ -2612,7 +2697,13 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
       return res.end(JSON.stringify(data));
     };
 
-    if (isRealYtId && !forceYtDlp) {
+    // The InnerTube path is quicker but its URLs are single-use and often
+    // rejected on the real playback request, which is what produced the
+    // "Could not play this track, trying next..." toast. Only reach for it
+    // when yt-dlp is unavailable; otherwise take the slower, reliable route
+    // (and note that search results are pre-warmed, so this is usually a
+    // cache hit by the time the user clicks).
+    if (isRealYtId && !forceYtDlp && !hasYtDlp()) {
       try {
         streamUrl = await fetchDirectYoutubeStreamServer(cleanId, quality);
         if (streamUrl) {
@@ -7819,6 +7910,50 @@ const server = http.createServer(async (req, res) => {
   if (parsedUrl.pathname === '/api/downloaded-track') {
     const name = parsedUrl.query.name || '';
     return handleDownloadedTrack(req, res, name);
+  }
+
+  // Files the user explicitly downloaded, from the download folder.
+  //
+  // This is deliberately NOT /api/offline-library: that lists the streaming
+  // cache in DATA_DIR/tracks, which is a playback detail, not something the
+  // user asked to keep. Showing the cache under "Downloads" made streamed
+  // tracks look like downloads.
+  if (parsedUrl.pathname === '/api/downloads') {
+    const dir = getDownloadsDir();
+    const tracks = [];
+    let totalBytes = 0;
+    try {
+      const entries = await fs.promises.readdir(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (!entry.isFile()) continue;
+        const ext = path.extname(entry.name).toLowerCase();
+        if (!AUDIO_EXTENSIONS.has(ext)) continue;
+        let stat = null;
+        try { stat = await fs.promises.stat(path.join(dir, entry.name)); } catch (e) { continue; }
+        totalBytes += stat.size;
+
+        // Files are written as "Artist - Title.ext"; split that back out.
+        const base = entry.name.slice(0, entry.name.length - ext.length);
+        const dash = base.indexOf(' - ');
+        const artist = dash > 0 ? base.slice(0, dash).trim() : '';
+        const title = dash > 0 ? base.slice(dash + 3).trim() : base.trim();
+
+        tracks.push({
+          id: 'dl:' + entry.name,
+          title: title || entry.name,
+          artist: artist || 'Unknown artist',
+          platform: 'local',
+          isDownload: true,
+          fileName: entry.name,
+          bytes: stat.size,
+          addedAt: stat.mtimeMs,
+          url: `http://127.0.0.1:${PORT}/api/downloaded-track?name=${encodeURIComponent(entry.name)}`
+        });
+      }
+    } catch (e) {}
+    tracks.sort((a, b) => b.addedAt - a.addedAt);
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({ success: true, tracks, totalBytes, dir }));
   }
 
   if (parsedUrl.pathname === '/api/library-add' && req.method === 'POST') {
