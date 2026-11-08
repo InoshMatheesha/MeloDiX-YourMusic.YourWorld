@@ -51,6 +51,82 @@ Moodex is an open-source, telemetry-free desktop music app and player for **Wind
 
 Built with **Electron**, **Vanilla JavaScript**, and **WebGL**, Moodex provides responsive UI interactions and hardware-accelerated audio visualization without runtime framework overhead. The project is distributed under the **MIT license** and enforces strict privacy: all configuration, cached streams, and playback history remain strictly on the local machine.
 
+## What's new in v1.1.0
+
+> **Version reset.** Moodex restarts its version numbering at **1.1.0** with this
+> release. Because `1.1.0` sorts below the previous `43.x` numbering, existing
+> installs **will not** be offered this build by the in-app updater - download it
+> from the [releases page](https://github.com/InoshMatheesha/Moodex-Music-Player/releases)
+> once instead. Updates from 1.1.0 onward work normally.
+
+### Artwork loads from a local cache
+
+Cover art used to be fetched from the origin CDN on every render, so the same
+album re-downloaded each time you scrolled past it. Artwork now goes through the
+local server's caching proxy, which keeps a bounded in-memory LRU in front of an
+on-disk cache and serves bytes back as immutable with an ETag.
+
+| | before | after |
+|---|---|---|
+| first load of a cover | ~700 ms | ~700 ms |
+| every later load | ~700 ms | **~2 ms** |
+
+Alongside that:
+
+- Requests for the same image are **coalesced**, so a grid of rows showing one
+  cover performs a single network fetch instead of one per row.
+- Covers for the next couple of screens are **prefetched** at low priority when a
+  track list renders, so artwork is already local by the time you scroll to it.
+- Every list and grid image is marked `loading="lazy"` and `decoding="async"`, so
+  offscreen artwork no longer competes for sockets or blocks the main thread.
+- Fixed: the proxy sent `Content-Type: [object Promise]` (an `async` function used
+  without `await`), and mislabelled every WebP as JPEG.
+
+### Lower idle CPU and bounded memory
+
+- The loudness-normalisation watcher was a permanent 100 ms interval - ten
+  wake-ups a second for the life of the app, even paused and hidden. It is now
+  supervised by a 1 Hz check and only runs while audio is actually playing.
+- The lyrics-translation cache grew without limit across a session; it is now
+  bounded like the other caches.
+- The thumbnail cache is capped at 64 MB / 600 entries and evicts
+  least-recently-used entries.
+
+### Redesigned search bar
+
+The top bar was built around a 44 px flat pill with no border and no focus
+treatment, which read as undersized in a full-screen window. It is now a 52 px
+field with a real border, a focus ring, a `Ctrl K` hint that steps out of the way
+as you type, and a brand lockup (logo + wordmark) to anchor the window. The
+platform switch was rescaled to match.
+
+### Navigation sidebar
+
+The rail is expanded by default and shows text labels, with **Search**,
+**Downloads** and **Wrapped** added to the existing destinations:
+
+| | |
+|---|---|
+| **Search** | jumps to the home view and focuses the search field |
+| **Downloads** | everything cached on this device, with total size, refresh and clear-all |
+| **Wrapped** | a running picture of your listening: total plays, time listened, unique tracks and artists, and your top 10 tracks and artists |
+
+Use the toggle at the top of the rail to collapse it back to the icon-only
+layout; the choice is remembered. Below 1100 px the rail collapses on its own so
+it does not eat the content area.
+
+> Wrapped counts plays from the moment you install v1.1.0 - play history alone
+> cannot supply it, because that list is capped at 100 entries and de-duplicates
+> repeats. Stats stay on your machine and can be cleared from the page.
+
+### Simplified Settings
+
+**Interface** went from 31 controls to 11. The 20 fine-tuning controls moved into
+**Advanced**, grouped under *Window & chrome*, *Surface & colour* and *Visualizer
+tuning*. Nothing was removed, every control keeps its behaviour, settings search
+still finds them wherever they live, and the Interface page links straight to the
+Advanced group.
+
 ## Features
 
 - High quality streaming with **YouTube Music, YouTube, and SoundCloud** without third-party advertisements or account requirements
@@ -65,6 +141,9 @@ Built with **Electron**, **Vanilla JavaScript**, and **WebGL**, Moodex provides 
 - **Albums** - see all of your favorite artist albums.
 - **Customization** - built in theme editor, configure everything, and a CSS editor, with animated backgrounds and interface opacity sliders.
 - **Plugins** - built-in plugin feature where you can add a plugin to edit how Moodex works with something or add a new function.
+- **Wrapped** - a running summary of your listening: plays, time listened, top tracks and top artists, all computed locally.
+- **Downloads view** - browse everything cached for offline playback, see how much space it uses, and clear it in one action.
+- **Labelled sidebar** - an expandable navigation rail with text labels that collapses to icons when you want the room.
 ## Built-in Audio Suite
 
 Moodex includes an integrated audio engineering toolkit accessible directly within the player interface:
@@ -160,6 +239,12 @@ The exact build output depends on the current project configuration.
 ## Memory usage
 
 Moodex (single Electron renderer and server process) typically utilizes approximately **180 MB of RAM** during steady-state playback. Actual footprint varies based on active visualizer modes, library size, and OS window compositing.
+
+As of v1.1.0 the caches that back this are explicitly bounded: the thumbnail
+cache holds at most 64 MB / 600 entries and evicts least-recently-used entries,
+and the lyrics-translation cache is capped rather than growing for the life of
+the session. Idle CPU is lower too - the loudness watcher no longer ticks ten
+times a second while nothing is playing.
 
 ### Memory usage is only classified as a leak when sustained footprint exceeds 600 MB.
 

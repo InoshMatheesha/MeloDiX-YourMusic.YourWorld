@@ -1731,12 +1731,30 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                           navActiveIndicator: document.getElementById('nav-active-indicator'),
                           navDiscover: document.getElementById('nav-discover'),
+                          navSearch: document.getElementById('nav-search'),
                           navFavorites: document.getElementById('nav-favorites'),
                           navAlbums: document.getElementById('nav-albums'),
                           navLocal: document.getElementById('nav-local'),
+                          navDownloads: document.getElementById('nav-downloads'),
                           navHistory: document.getElementById('nav-history'),
                           navQueue: document.getElementById('nav-queue'),
+                          navWrapped: document.getElementById('nav-wrapped'),
                           navSettings: document.getElementById('nav-settings'),
+                          downloadsCount: document.getElementById('downloads-count'),
+                          btnRailToggle: document.getElementById('btn-rail-toggle'),
+                          sidebarEl: document.getElementById('sidebar'),
+                          viewDownloads: document.getElementById('view-downloads'),
+                          viewWrapped: document.getElementById('view-wrapped'),
+                          downloadsTracksList: document.getElementById('downloads-tracks-list'),
+                          downloadsSummary: document.getElementById('downloads-summary'),
+                          btnRefreshDownloads: document.getElementById('btn-refresh-downloads'),
+                          btnClearDownloads: document.getElementById('btn-clear-downloads'),
+                          wrappedStatGrid: document.getElementById('wrapped-stat-grid'),
+                          wrappedTopTracks: document.getElementById('wrapped-top-tracks'),
+                          wrappedTopArtists: document.getElementById('wrapped-top-artists'),
+                          wrappedEmpty: document.getElementById('wrapped-empty'),
+                          wrappedPeriod: document.getElementById('wrapped-period'),
+                          btnResetWrapped: document.getElementById('btn-reset-wrapped'),
                           favoritesCount: document.getElementById('favorites-count'),
                           albumsCount: document.getElementById('albums-count'),
                           localCount: document.getElementById('local-count'),
@@ -2522,7 +2540,16 @@ document.addEventListener('DOMContentLoaded', async () => {
   let levelAvgDb = -120;
   function normalizeEnabled() { return localStorage.getItem('moodex_audio_normalize') === '1'; }
   function resetLevelWatcher() { levelAvgDb = -120; if (audioEngine && audioEngine.setNormalizeGainDb) audioEngine.setNormalizeGainDb(0); }
-  setInterval(() => {
+  // Loudness-normalisation level watcher.
+  //
+  // This used to be a bare 100ms setInterval that ran for the entire lifetime
+  // of the app - ten wake-ups a second even with nothing playing and the
+  // window hidden, which kept the renderer process off idle permanently.
+  // It is now supervised: the fast loop only exists while audio is actually
+  // playing, and a 1Hz supervisor (20x cheaper) decides when to spin it up.
+  let levelWatcherTimer = null;
+
+  function levelWatcherTick() {
     const audio = el.nativeAudio;
     if (!audioEngine || !audioEngine.getLevelDb || !audio || audio.paused || !state.isPlaying) return;
     const db = audioEngine.getLevelDb();
@@ -2535,7 +2562,29 @@ document.addEventListener('DOMContentLoaded', async () => {
     } else if (levelAvgDb > -120) {
       resetLevelWatcher();
     }
-  }, 100);
+  }
+
+  function levelWatcherShouldRun() {
+    const audio = el.nativeAudio;
+    // Normalisation is the only consumer, so there is nothing to track when the
+    // user has it switched off.
+    if (!normalizeEnabled()) return false;
+    return !!(state.isPlaying && audio && !audio.paused && audioEngine && audioEngine.getLevelDb);
+  }
+
+  function syncLevelWatcher() {
+    const shouldRun = levelWatcherShouldRun();
+    if (shouldRun && !levelWatcherTimer) {
+      levelWatcherTimer = setInterval(levelWatcherTick, 100);
+    } else if (!shouldRun && levelWatcherTimer) {
+      clearInterval(levelWatcherTimer);
+      levelWatcherTimer = null;
+      if (levelAvgDb > -120) resetLevelWatcher();
+    }
+  }
+
+  setInterval(syncLevelWatcher, 1000);
+  document.addEventListener('visibilitychange', syncLevelWatcher);
 
   syncSettingsSlidersToState();
   updateHqRouting();
@@ -4271,6 +4320,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     updateQueueBadge();
 
     track.playedAt = Date.now();
+    // Tally for the Wrapped view. state.history is capped and de-duplicated,
+    // so it cannot answer "how many times", which is what Wrapped reports on.
+    try { recordPlayStat(track); } catch (e) {}
     state.history = state.history.filter(t => !isSameTrack(t, track));
     state.history.unshift(track);
     if (state.history.length > 100) state.history.pop();
@@ -5491,6 +5543,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       const data = await res.json();
       if (data && data.success && Array.isArray(data.translations)) {
         lyricsTranslationCache.set(cacheKey, data.translations);
+        // Each entry holds a full translated lyric sheet, so this map grew
+        // without limit across a long listening session. Keep the recent ones.
+        boundMap(lyricsTranslationCache, 30);
         const curKey = `${(state.currentTrack && state.currentTrack.title) || ''}|${(state.currentTrack && state.currentTrack.artist) || ''}|${state.trLang || 'en'}`.toLowerCase();
         if (curKey === cacheKey && state.trActive) {
           state.currentTranslations = data.translations;
@@ -8359,7 +8414,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       container.innerHTML = `
         <div class="search-artist-card" role="button" tabindex="0">
           <div class="search-artist-avatar-wrap">
-            ${avatarUrl ? `<img class="search-artist-avatar" src="${escapeHtml(avatarUrl)}" alt="${escapeHtml(artist.name)}" />` : '<div style="width:100%;height:100%;background:var(--md-sys-color-surface-container);"></div>'}
+            ${avatarUrl ? `<img class="search-artist-avatar" src="${escapeHtml(avatarUrl)}" alt="${escapeHtml(artist.name)}" decoding="async" loading="lazy" />` : '<div style="width:100%;height:100%;background:var(--md-sys-color-surface-container);"></div>'}
           </div>
           <div class="search-artist-info">
             <span class="search-artist-name">${escapeHtml(artist.name)}</span>
@@ -8644,7 +8699,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const sub = [album.type || 'Album', album.artist || ''].filter(Boolean).join(' · ');
       return `
         <div class="search-album-card" role="button" tabindex="0">
-          ${album.cover ? `<img class="search-album-cover" src="${escapeHtml(album.cover)}" alt="${escapeHtml(album.title || '')}" loading="lazy" onerror="this.style.display='none'" />` : '<div class="search-album-cover" style="display:flex;align-items:center;justify-content:center;background:var(--md-sys-color-surface-container-high);"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--md-sys-color-outline);"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg></div>'}
+          ${album.cover ? `<img class="search-album-cover" src="${escapeHtml(album.cover)}" alt="${escapeHtml(album.title || '')}" loading="lazy" onerror="this.style.display='none'" decoding="async" />` : '<div class="search-album-cover" style="display:flex;align-items:center;justify-content:center;background:var(--md-sys-color-surface-container-high);"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--md-sys-color-outline);"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg></div>'}
           <div class="search-album-info">
             <span class="search-album-title" title="${escapeHtml(album.title || '')}">${escapeHtml(album.title || '')}</span>
             <span class="search-album-sub" title="${escapeHtml(sub)}">${escapeHtml(sub)}</span>
@@ -8759,12 +8814,12 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (album.gridCovers && Array.isArray(album.gridCovers) && album.gridCovers.length >= 4) {
         coverEl.innerHTML = `
           <div class="sp-grid-cover" style="width:100%;height:100%;aspect-ratio:1;border-radius:20px;overflow:hidden;gap:3px;padding:3px;background:var(--md-sys-color-surface-container);">
-            ${album.gridCovers.slice(0, 4).map(c => `<img src="${escapeHtml(c)}" style="border-radius:8px;" />`).join('')}
+            ${album.gridCovers.slice(0, 4).map(c => `<img src="${escapeHtml(c)}" style="border-radius:8px;" decoding="async" loading="lazy" />`).join('')}
           </div>
         `;
       } else {
         coverEl.innerHTML = album.cover
-          ? `<img src="${escapeHtml(album.cover)}" alt="${escapeHtml(album.title)}" style="width:100%;height:100%;aspect-ratio:1;border-radius:20px;object-fit:cover;box-shadow:none;" />`
+          ? `<img src="${escapeHtml(album.cover)}" alt="${escapeHtml(album.title)}" style="width:100%;height:100%;aspect-ratio:1;border-radius:20px;object-fit:cover;box-shadow:none;" decoding="async" loading="lazy" />`
           : '<div style="width:100%;height:100%;aspect-ratio:1;border-radius:20px;background:var(--md-sys-color-surface-container);"></div>';
       }
       if (typeof bindCoverHoldZoom === 'function') bindCoverHoldZoom(coverEl);
@@ -9006,7 +9061,7 @@ document.addEventListener('DOMContentLoaded', async () => {
               const sub = album.year ? `${escapeHtml(album.artist)} · ${escapeHtml(album.year)}` : escapeHtml(album.artist || '');
               return `
                 <div class="search-album-card" role="button" tabindex="0">
-                  ${album.cover ? `<img class="search-album-cover" src="${escapeHtml(album.cover)}" alt="${escapeHtml(album.title)}" loading="lazy" onerror="this.style.display='none'" />` : '<div class="search-album-cover" style="display:flex;align-items:center;justify-content:center;background:var(--md-sys-color-surface-container-high);"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--md-sys-color-outline);"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg></div>'}
+                  ${album.cover ? `<img class="search-album-cover" src="${escapeHtml(album.cover)}" alt="${escapeHtml(album.title)}" loading="lazy" onerror="this.style.display='none'" decoding="async" />` : '<div class="search-album-cover" style="display:flex;align-items:center;justify-content:center;background:var(--md-sys-color-surface-container-high);"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--md-sys-color-outline);"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg></div>'}
                   <div class="search-album-info">
                     <span class="search-album-title" title="${escapeHtml(album.title)}">${escapeHtml(album.title)}</span>
                     <span class="search-album-sub" title="${sub}">${sub}</span>
@@ -10056,7 +10111,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       ${!isAlbum ? `
       <div class="track-row-thumb-wrap">
         <svg class="track-row-fallback-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>
-        ${rowThumb ? `<img class="track-row-thumb" src="${escapeHtml(rowThumb)}" alt="" onerror="this.style.display='none'">` : ''}
+        ${rowThumb ? `<img class="track-row-thumb" src="${escapeHtml(rowThumb)}" alt="" onerror="this.style.display='none'" decoding="async" loading="lazy">` : ''}
       </div>` : ''}
       <div class="track-row-info">
       <span class="track-row-title">${escapeHtml(track.title || 'untitled')}</span>
@@ -10286,6 +10341,10 @@ document.addEventListener('DOMContentLoaded', async () => {
       container.innerHTML = `<div class="empty-hint">${emptyMessages[context] || 'No tracks to show'}</div>`;
       return;
     }
+
+    // Warm the cover cache for roughly the first couple of screens so the
+    // artwork is already local by the time the rows are scrolled into view.
+    prefetchThumbs(tracks, 36);
 
     const itemHeight = 64;
     const overscan = 15;
@@ -10609,7 +10668,7 @@ function renderClickableArtists(container, rawArtist) {
 
     const circleHtml = `
       <div class="fav-artist-circle">
-        <img class="fav-artist-img" src="${escapeHtml(avatar)}" alt="${escapeHtml(artistObj.name)}" onerror="this.src='data:image/svg+xml;utf8,<svg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'152\\' height=\\'152\\' fill=\\'%23333\\'><circle cx=\\'76\\' cy=\\'76\\' r=\\'76\\' fill=\\'%232a2a2a\\'/></svg>'">
+        <img class="fav-artist-img" src="${escapeHtml(avatar)}" alt="${escapeHtml(artistObj.name)}" onerror="this.src='data:image/svg+xml;utf8,<svg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'152\\' height=\\'152\\' fill=\\'%23333\\'><circle cx=\\'76\\' cy=\\'76\\' r=\\'76\\' fill=\\'%232a2a2a\\'/></svg>'" decoding="async" loading="lazy">
         <div class="fav-artist-plays"><svg viewBox="0 0 24 24"><polygon points="6 4 20 12 6 20 6 4"/></svg><span>${escapeHtml(playText)}</span></div>
         <div class="fav-artist-hover">
           <button type="button" class="fav-artist-action-btn primary btn-play-fav" title="Play ${escapeHtml(artistObj.name)}">
@@ -10999,7 +11058,7 @@ function renderClickableArtists(container, rawArtist) {
           const sub = alb.year ? `${escapeHtml(alb.artist || cleanName)} · ${escapeHtml(alb.year)}` : escapeHtml(alb.artist || cleanName);
           return `
             <div class="search-album-card" role="button" tabindex="0">
-              ${alb.cover ? `<img class="search-album-cover" src="${escapeHtml(alb.cover)}" alt="${escapeHtml(alb.title || '')}" loading="lazy" onerror="this.style.display='none'" />` : '<div class="search-album-cover" style="display:flex;align-items:center;justify-content:center;background:var(--md-sys-color-surface-container-high);"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--md-sys-color-outline);"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg></div>'}
+              ${alb.cover ? `<img class="search-album-cover" src="${escapeHtml(alb.cover)}" alt="${escapeHtml(alb.title || '')}" loading="lazy" onerror="this.style.display='none'" decoding="async" />` : '<div class="search-album-cover" style="display:flex;align-items:center;justify-content:center;background:var(--md-sys-color-surface-container-high);"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--md-sys-color-outline);"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg></div>'}
               <div class="search-album-info">
                 <span class="search-album-title" title="${escapeHtml(alb.title || '')}">${escapeHtml(alb.title || '')}</span>
                 <span class="search-album-sub" title="${sub}">${sub}</span>
@@ -11563,7 +11622,7 @@ function renderClickableArtists(container, rawArtist) {
           const sub = alb.artist ? `${escapeHtml(alb.artist)} · ${count} track${count === 1 ? '' : 's'}` : `${count} track${count === 1 ? '' : 's'}`;
           return `
             <div class="search-album-card" role="button" tabindex="0" data-album="${escapeHtml(alb.name)}">
-              ${alb.cover ? `<img class="search-album-cover" src="${escapeHtml(alb.cover)}" alt="${escapeHtml(alb.name)}" loading="lazy" onerror="this.style.display='none'" />` : '<div class="search-album-cover" style="display:flex;align-items:center;justify-content:center;background:var(--md-sys-color-surface-container-high);"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--md-sys-color-outline);"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg></div>'}
+              ${alb.cover ? `<img class="search-album-cover" src="${escapeHtml(alb.cover)}" alt="${escapeHtml(alb.name)}" loading="lazy" onerror="this.style.display='none'" decoding="async" />` : '<div class="search-album-cover" style="display:flex;align-items:center;justify-content:center;background:var(--md-sys-color-surface-container-high);"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--md-sys-color-outline);"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg></div>'}
               <div class="search-album-info">
                 <span class="search-album-title" title="${escapeHtml(alb.name)}">${escapeHtml(alb.name)}</span>
                 <span class="search-album-sub" title="${sub}">${sub}</span>
@@ -11709,9 +11768,91 @@ function renderClickableArtists(container, rawArtist) {
     }
   }
 
+  // ---------------------------------------------------------------------
+  // Thumbnail pipeline
+  //
+  // Remote cover URLs are routed through the local server's /api/image-proxy,
+  // which keeps a bounded memory LRU in front of an on-disk cache and serves
+  // the bytes back as `immutable` with an ETag. A cover is therefore fetched
+  // from the CDN at most once per machine; every later render is a local hit,
+  // so grids and track lists paint without the per-image network round-trip
+  // they used to pay on every single view.
+  //
+  // This function used to return its argument unchanged, which meant the
+  // proxy - and its cache - was never actually reached by the renderer.
+  // ---------------------------------------------------------------------
+  const THUMB_PROXY_MEMO_MAX = 2000;
+  const thumbProxyMemo = new Map();
+
   function proxiedThumb(src) {
     if (!src || typeof src !== 'string') return '';
-    return src;
+    const raw = src.trim();
+    if (!raw) return '';
+    // Inline, blob and on-disk sources are already local; proxying would only
+    // add a hop, and a data: URL would blow out the query string.
+    if (/^(data:|blob:|file:)/i.test(raw)) return raw;
+    if (!/^https?:\/\//i.test(raw)) return raw;
+
+    const port = state.serverPort;
+    // Before the local server reports its port there is nothing to proxy to,
+    // so fall back to the origin URL and let early paints still show artwork.
+    if (!port) return raw;
+    if (raw.indexOf('127.0.0.1:' + port) !== -1) return raw; // already proxied
+
+    const memoKey = port + '|' + raw;
+    const memo = thumbProxyMemo.get(memoKey);
+    if (memo) return memo;
+
+    const out = 'http://127.0.0.1:' + port + '/api/image-proxy?url=' + encodeURIComponent(raw);
+    if (thumbProxyMemo.size >= THUMB_PROXY_MEMO_MAX) {
+      // Plain FIFO trim: this only memoises string building, so the eviction
+      // policy does not need to be clever.
+      const oldest = thumbProxyMemo.keys().next().value;
+      if (oldest !== undefined) thumbProxyMemo.delete(oldest);
+    }
+    thumbProxyMemo.set(memoKey, out);
+    return out;
+  }
+
+  // Warm the proxy cache for artwork that is about to scroll into view (fresh
+  // search results, a playlist the user just opened). Fetches are
+  // fire-and-forget and capped so prefetching never competes for sockets with
+  // the covers already on screen.
+  const thumbPrefetched = new Set();
+  const thumbPrefetchQueue = [];
+  let thumbPrefetchActive = 0;
+  const THUMB_PREFETCH_CONCURRENCY = 4;
+  const THUMB_PREFETCH_MAX_TRACKED = 3000;
+
+  function pumpThumbPrefetch() {
+    while (thumbPrefetchActive < THUMB_PREFETCH_CONCURRENCY && thumbPrefetchQueue.length) {
+      const url = thumbPrefetchQueue.shift();
+      thumbPrefetchActive++;
+      fetch(url, { cache: 'force-cache', priority: 'low' })
+        .catch(() => {})
+        .finally(() => {
+          thumbPrefetchActive--;
+          pumpThumbPrefetch();
+        });
+    }
+  }
+
+  function prefetchThumbs(tracks, limit = 40) {
+    if (!Array.isArray(tracks) || !tracks.length) return;
+    if (document.hidden) return; // nothing is about to be seen
+    let queued = 0;
+    for (const track of tracks) {
+      if (queued >= limit) break;
+      let url = '';
+      try { url = getTrackThumbUrl(track); } catch (e) { url = ''; }
+      if (!url || url.indexOf('/api/image-proxy') === -1) continue;
+      if (thumbPrefetched.has(url)) continue;
+      if (thumbPrefetched.size >= THUMB_PREFETCH_MAX_TRACKED) thumbPrefetched.clear();
+      thumbPrefetched.add(url);
+      thumbPrefetchQueue.push(url);
+      queued++;
+    }
+    if (queued) pumpThumbPrefetch();
   }
 
   function getTrackThumbUrl(track) {
@@ -12525,13 +12666,13 @@ function renderClickableArtists(container, rawArtist) {
 
     requestAnimationFrame(() => {
       document.querySelectorAll('.no-enter-anim').forEach(c => c.classList.remove('no-enter-anim'));
-      [el.viewDiscover, el.viewFavorites, el.viewAlbums, el.viewLocal, el.viewHistory, el.viewQueue, el.viewPlaylistDetail, el.viewAlbum, el.viewArtist, el.viewSettings].forEach(v => {
+      [el.viewDiscover, el.viewFavorites, el.viewAlbums, el.viewLocal, el.viewDownloads, el.viewHistory, el.viewQueue, el.viewWrapped, el.viewPlaylistDetail, el.viewAlbum, el.viewArtist, el.viewSettings].forEach(v => {
         if (v) v.classList.remove('active');
       });
 
         const nestedView = viewName === 'playlist-detail' || viewName === 'album' || viewName === 'artist';
         if (!nestedView) {
-          [el.navDiscover, el.navFavorites, el.navAlbums, el.navLocal, el.navHistory, el.navQueue, el.navSettings].forEach(n => {
+          [el.navDiscover, el.navSearch, el.navFavorites, el.navAlbums, el.navLocal, el.navDownloads, el.navHistory, el.navQueue, el.navWrapped, el.navSettings].forEach(n => {
             if (n) n.classList.remove('active');
           });
         }
@@ -12569,6 +12710,14 @@ function renderClickableArtists(container, rawArtist) {
             if (el.viewAlbum) el.viewAlbum.classList.add('active');
           } else if (viewName === 'artist') {
             if (el.viewArtist) el.viewArtist.classList.add('active');
+          } else if (viewName === 'downloads') {
+            if (el.viewDownloads) el.viewDownloads.classList.add('active');
+            if (el.navDownloads) el.navDownloads.classList.add('active');
+            renderDownloadsView();
+          } else if (viewName === 'wrapped') {
+            if (el.viewWrapped) el.viewWrapped.classList.add('active');
+            if (el.navWrapped) el.navWrapped.classList.add('active');
+            renderWrappedView();
           } else if (viewName === 'settings') {
             if (el.viewSettings) el.viewSettings.classList.add('active');
             if (el.navSettings) el.navSettings.classList.add('active');
@@ -12942,7 +13091,315 @@ function updateNavIndicator(animate) {
   if (el.navHistory) el.navHistory.addEventListener('click', () => switchView('history'));
   if (el.navQueue) el.navQueue.addEventListener('click', () => switchView('queue'));
   if (el.navSettings) el.navSettings.addEventListener('click', () => switchView('settings'));
+  if (el.navDownloads) el.navDownloads.addEventListener('click', () => switchView('downloads'));
+  if (el.navWrapped) el.navWrapped.addEventListener('click', () => switchView('wrapped'));
+
+  // Search is not a separate page - the global field already drives results
+  // into the home view, so the rail entry just takes you there and focuses it.
+  if (el.navSearch) {
+    el.navSearch.addEventListener('click', () => {
+      if (state.currentView !== 'discover') switchView('discover');
+      if (el.searchInput) {
+        el.searchInput.focus();
+        el.searchInput.select();
+      }
+    });
+  }
   updateAlbumsCount();
+
+  // =====================================================================
+  // Sidebar rail: expanded (icon + label) or collapsed (icon only)
+  // =====================================================================
+  const RAIL_COLLAPSED_KEY = 'moodex_sidebar_collapsed';
+
+  function applyRailCollapsed(collapsed, persist) {
+    const sidebar = el.sidebarEl || document.getElementById('sidebar');
+    if (!sidebar) return;
+    sidebar.classList.toggle('rail-collapsed', !!collapsed);
+    if (el.btnRailToggle) {
+      el.btnRailToggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+      el.btnRailToggle.title = collapsed ? 'Expand sidebar' : 'Collapse sidebar';
+      el.btnRailToggle.setAttribute('aria-label', el.btnRailToggle.title);
+    }
+    if (persist) {
+      try { localStorage.setItem(RAIL_COLLAPSED_KEY, collapsed ? '1' : '0'); } catch (e) {}
+    }
+    // The sliding pill indicator is only used by the collapsed rail; let it
+    // re-measure now that the row geometry has changed.
+    if (typeof moveNavIndicator === 'function') {
+      const active = document.querySelector('.sidebar-nav .nav-item.active');
+      requestAnimationFrame(() => moveNavIndicator(active, false));
+    }
+  }
+
+  applyRailCollapsed(localStorage.getItem(RAIL_COLLAPSED_KEY) === '1', false);
+
+  if (el.btnRailToggle) {
+    el.btnRailToggle.addEventListener('click', () => {
+      const sidebar = el.sidebarEl || document.getElementById('sidebar');
+      applyRailCollapsed(!(sidebar && sidebar.classList.contains('rail-collapsed')), true);
+    });
+  }
+
+  // =====================================================================
+  // Downloads view - what is actually cached on disk for offline playback
+  // =====================================================================
+  let downloadsLoading = false;
+
+  async function fetchOfflineLibrary() {
+    if (!state.serverPort) return null;
+    try {
+      // window.fetch is patched app-wide to attach X-Moodex-Token to /api/ URLs.
+      const res = await fetch(`http://127.0.0.1:${state.serverPort}/api/offline-library`);
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function setDownloadsBadge(n) {
+    if (!el.downloadsCount) return;
+    if (n > 0) {
+      el.downloadsCount.textContent = n > 99 ? '99+' : String(n);
+      el.downloadsCount.hidden = false;
+    } else {
+      el.downloadsCount.hidden = true;
+    }
+  }
+
+  function formatBytes(bytes) {
+    const n = Number(bytes) || 0;
+    if (n < 1024) return `${n} B`;
+    const units = ['KB', 'MB', 'GB', 'TB'];
+    let v = n / 1024;
+    let i = 0;
+    while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+    return `${v < 10 ? v.toFixed(1) : Math.round(v)} ${units[i]}`;
+  }
+
+  async function renderDownloadsView(force) {
+    if (downloadsLoading && !force) return;
+    downloadsLoading = true;
+    try {
+      const data = await fetchOfflineLibrary();
+      const tracks = (data && Array.isArray(data.tracks)) ? data.tracks : [];
+      setDownloadsBadge(tracks.length);
+
+      if (el.downloadsSummary) {
+        el.downloadsSummary.textContent = tracks.length
+          ? `${tracks.length} track${tracks.length === 1 ? '' : 's'} · ${formatBytes(data && data.totalBytes)} on this device`
+          : 'Tracks stored on this device';
+      }
+      if (el.btnClearDownloads) el.btnClearDownloads.disabled = tracks.length === 0;
+
+      if (el.downloadsTracksList) {
+        // Mark them as local so playback resolves from the cache, not the CDN.
+        const rows = tracks.map(t => Object.assign({}, t, { offline: true }));
+        renderTracks(el.downloadsTracksList, rows, 'local');
+      }
+    } finally {
+      downloadsLoading = false;
+    }
+  }
+
+  if (el.btnRefreshDownloads) {
+    el.btnRefreshDownloads.addEventListener('click', () => renderDownloadsView(true));
+  }
+
+  if (el.btnClearDownloads) {
+    el.btnClearDownloads.addEventListener('click', async () => {
+      const ok = typeof showConfirm === 'function'
+        ? await showConfirm('Remove every downloaded track from this device?')
+        : window.confirm('Remove every downloaded track from this device?');
+      if (!ok) return;
+      try {
+        await fetch(`http://127.0.0.1:${state.serverPort}/api/clear-offline-library`, { method: 'POST' });
+      } catch (e) {}
+      renderDownloadsView(true);
+      if (typeof updateOfflineStorageUI === 'function') updateOfflineStorageUI();
+    });
+  }
+
+  // Keep the rail badge honest without making the user open the page.
+  setTimeout(() => {
+    fetchOfflineLibrary().then(d => {
+      if (d && Array.isArray(d.tracks)) setDownloadsBadge(d.tracks.length);
+    });
+  }, 4000);
+
+  // =====================================================================
+  // Wrapped - listening stats
+  //
+  // state.history is capped at 100 entries and de-duplicates repeats, so it
+  // cannot answer "how often". A small separate tally is kept instead: one
+  // record per track, updated on each play.
+  // =====================================================================
+  const PLAY_STATS_KEY = 'moodex_play_stats';
+  const PLAY_STATS_MAX = 600;
+
+  function loadPlayStats() {
+    try {
+      const raw = localStorage.getItem(PLAY_STATS_KEY);
+      if (!raw) return {};
+      const parsed = JSON.parse(raw);
+      return (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) ? parsed : {};
+    } catch (e) {
+      return {};
+    }
+  }
+
+  function savePlayStats(stats) {
+    try {
+      let entries = Object.entries(stats);
+      if (entries.length > PLAY_STATS_MAX) {
+        // Drop the least recently played first; a long tail of one-offs is
+        // exactly what should go.
+        entries.sort((a, b) => (b[1].lastPlayed || 0) - (a[1].lastPlayed || 0));
+        entries = entries.slice(0, PLAY_STATS_MAX);
+      }
+      localStorage.setItem(PLAY_STATS_KEY, JSON.stringify(Object.fromEntries(entries)));
+    } catch (e) {}
+  }
+
+  function playStatKey(track) {
+    return `${(track.title || '').trim().toLowerCase()}|${(track.artist || '').trim().toLowerCase()}`;
+  }
+
+  function recordPlayStat(track) {
+    if (!track || (!track.title && !track.artist)) return;
+    const key = playStatKey(track);
+    if (key === '|') return;
+    const stats = loadPlayStats();
+    const prev = stats[key] || { count: 0, seconds: 0, firstPlayed: Date.now() };
+    stats[key] = {
+      title: track.title || 'Untitled',
+      artist: track.artist || 'Unknown artist',
+      // Store the raw URL: proxiedThumb() depends on the server port, which
+      // changes between runs, so a proxied URL would go stale on disk.
+      thumbnail: track.thumbnail || track.cover || prev.thumbnail || '',
+      platform: track.platform || prev.platform || '',
+      count: (prev.count || 0) + 1,
+      seconds: (prev.seconds || 0) + (Number(track.duration) || 0),
+      firstPlayed: prev.firstPlayed || Date.now(),
+      lastPlayed: Date.now()
+    };
+    savePlayStats(stats);
+  }
+
+  function formatListeningTime(totalSeconds) {
+    const s = Math.max(0, Math.round(Number(totalSeconds) || 0));
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    if (h >= 1) return `${h}h ${m}m`;
+    if (m >= 1) return `${m}m`;
+    return `${s}s`;
+  }
+
+  function wrappedStatCard(value, label) {
+    return `<div class="wrapped-stat"><span class="wrapped-stat-value">${escapeHtml(value)}</span><span class="wrapped-stat-label">${escapeHtml(label)}</span></div>`;
+  }
+
+  function wrappedRow(rank, title, meta, count, art, round) {
+    const thumb = art ? proxiedThumb(art) : '';
+    const image = thumb
+      ? `<img class="wrapped-row-art${round ? ' is-round' : ''}" src="${escapeHtml(thumb)}" alt="" loading="lazy" decoding="async" onerror="this.style.visibility='hidden'">`
+      : `<div class="wrapped-row-art${round ? ' is-round' : ''}"></div>`;
+    return `<li class="wrapped-row" data-title="${escapeHtml(title)}" data-artist="${escapeHtml(meta)}">
+      <span class="wrapped-rank">${rank}</span>
+      ${image}
+      <span class="wrapped-row-text">
+        <span class="wrapped-row-title">${escapeHtml(title)}</span>
+        <span class="wrapped-row-meta">${escapeHtml(meta)}</span>
+      </span>
+      <span class="wrapped-row-count">${escapeHtml(count)}</span>
+    </li>`;
+  }
+
+  function renderWrappedView() {
+    const stats = loadPlayStats();
+    const rows = Object.values(stats);
+    const hasData = rows.length > 0;
+
+    if (el.wrappedEmpty) el.wrappedEmpty.classList.toggle('hidden', hasData);
+    [el.wrappedStatGrid, el.wrappedTopTracks, el.wrappedTopArtists].forEach(node => {
+      if (node) node.closest('.wrapped-panel, .wrapped-stat-grid')?.classList.toggle('hidden', !hasData);
+    });
+    if (!hasData) {
+      if (el.wrappedStatGrid) el.wrappedStatGrid.innerHTML = '';
+      if (el.wrappedTopTracks) el.wrappedTopTracks.innerHTML = '';
+      if (el.wrappedTopArtists) el.wrappedTopArtists.innerHTML = '';
+      return;
+    }
+
+    const totalPlays = rows.reduce((n, r) => n + (r.count || 0), 0);
+    const totalSeconds = rows.reduce((n, r) => n + (r.seconds || 0), 0);
+
+    const byArtist = new Map();
+    for (const r of rows) {
+      const name = (r.artist || 'Unknown artist').trim();
+      const key = name.toLowerCase();
+      const cur = byArtist.get(key) || { name, count: 0, seconds: 0, thumbnail: '' };
+      cur.count += r.count || 0;
+      cur.seconds += r.seconds || 0;
+      if (!cur.thumbnail && r.thumbnail) cur.thumbnail = r.thumbnail;
+      byArtist.set(key, cur);
+    }
+
+    const since = rows.reduce((min, r) => Math.min(min, r.firstPlayed || Date.now()), Date.now());
+    if (el.wrappedPeriod) {
+      el.wrappedPeriod.textContent = `Since ${new Date(since).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}`;
+    }
+
+    if (el.wrappedStatGrid) {
+      el.wrappedStatGrid.innerHTML = [
+        wrappedStatCard(String(totalPlays), totalPlays === 1 ? 'Track played' : 'Tracks played'),
+        wrappedStatCard(formatListeningTime(totalSeconds), 'Time listened'),
+        wrappedStatCard(String(rows.length), 'Unique tracks'),
+        wrappedStatCard(String(byArtist.size), 'Unique artists')
+      ].join('');
+    }
+
+    if (el.wrappedTopTracks) {
+      const top = rows.slice().sort((a, b) => (b.count || 0) - (a.count || 0)).slice(0, 10);
+      el.wrappedTopTracks.innerHTML = top
+        .map((r, i) => wrappedRow(i + 1, r.title || 'Untitled', r.artist || 'Unknown artist', `${r.count} play${r.count === 1 ? '' : 's'}`, r.thumbnail, false))
+        .join('');
+    }
+
+    if (el.wrappedTopArtists) {
+      const top = Array.from(byArtist.values()).sort((a, b) => b.count - a.count).slice(0, 10);
+      el.wrappedTopArtists.innerHTML = top
+        .map((r, i) => wrappedRow(i + 1, r.name, formatListeningTime(r.seconds), `${r.count} play${r.count === 1 ? '' : 's'}`, r.thumbnail, true))
+        .join('');
+    }
+  }
+
+  // Clicking a Wrapped row searches for it, which is the useful next action.
+  [el.wrappedTopTracks, el.wrappedTopArtists].forEach(list => {
+    if (!list) return;
+    list.addEventListener('click', (e) => {
+      const row = e.target.closest('.wrapped-row');
+      if (!row) return;
+      const q = `${row.dataset.title || ''} ${row.dataset.artist || ''}`.trim();
+      if (!q || !el.searchInput) return;
+      switchView('discover');
+      el.searchInput.value = q;
+      el.searchInput.dispatchEvent(new Event('input', { bubbles: true }));
+      el.searchInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    });
+  });
+
+  if (el.btnResetWrapped) {
+    el.btnResetWrapped.addEventListener('click', async () => {
+      const ok = typeof showConfirm === 'function'
+        ? await showConfirm('Clear your listening stats? This cannot be undone.')
+        : window.confirm('Clear your listening stats? This cannot be undone.');
+      if (!ok) return;
+      try { localStorage.removeItem(PLAY_STATS_KEY); } catch (e) {}
+      renderWrappedView();
+    });
+  }
 
   const addLocalBtn = el.btnAddLocal || el.btnAddLocalFiles || document.getElementById('btn-add-local') || document.getElementById('btn-add-local-files');
   if (addLocalBtn) addLocalBtn.addEventListener('click', () => addLocalFiles());
@@ -13220,6 +13677,9 @@ function bindCoverHoldZoom(wrapEl) {
       } else if (el.searchClearBtn) {
         el.searchClearBtn.classList.add('hidden');
       }
+      // Drives the Ctrl+K hint out of the way once there is text to read.
+      const box = e.target.closest('.search-box');
+      if (box) box.classList.toggle('has-value', !!val);
       if (!val.trim()) {
         restoreDiscoverHomeState(true);
       }
@@ -15367,7 +15827,7 @@ function bindCoverHoldZoom(wrapEl) {
         btn.type = 'button';
         btn.className = 'app-icon-option' + (saved === item.id ? ' active' : '');
         btn.dataset.icon = item.id;
-        btn.innerHTML = '<div class="app-icon-option-box"><img src="' + resolveAppIconSrc(item.id) + '" alt="' + item.label + '" draggable="false" /></div><span class="app-icon-option-label">' + item.label + '</span>';
+        btn.innerHTML = '<div class="app-icon-option-box"><img src="' + resolveAppIconSrc(item.id) + '" alt="' + item.label + '" draggable="false" decoding="async" loading="lazy" /></div><span class="app-icon-option-label">' + item.label + '</span>';
         btn.addEventListener('click', () => applyHomeAppIcon(item.id));
         grid.appendChild(btn);
       });
@@ -16264,6 +16724,19 @@ function bindCoverHoldZoom(wrapEl) {
   }
   window.showSettingsCategory = showSettingsCategory;
 
+  // Pointers left behind in the simplified sections, so a setting that moved
+  // into Advanced is still one click away from where it used to be.
+  document.querySelectorAll('#view-settings .settings-more-link[data-goto-cat]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      showSettingsCategory(btn.dataset.gotoCat);
+      const wrapper = document.getElementById('adv-collapsible-wrapper');
+      const header = document.getElementById('btn-toggle-adv-section');
+      // The Advanced pane is collapsible; open it or the user lands on a
+      // heading with nothing under it.
+      if (wrapper && header && !wrapper.classList.contains('is-open')) header.click();
+    });
+  });
+
   const settingsSearchInput = document.getElementById('settings-search-input');
   if (settingsSearchInput) {
     settingsSearchInput.addEventListener('input', () => {
@@ -16276,7 +16749,7 @@ function bindCoverHoldZoom(wrapEl) {
         sections.forEach(sec => {
           sec.style.display = '';
           sec.classList.toggle('active', sec.dataset.cat === activeCat);
-          sec.querySelectorAll('.setting-item, .m3-group, .settings-section-title, details, .ct-head, .ct-list, .about-hero').forEach(elNode => {
+          sec.querySelectorAll('.setting-item, .m3-group, .settings-group, .settings-group-title, .settings-advanced-notice, .settings-more-link, .settings-section-title, details, .ct-head, .ct-list, .about-hero').forEach(elNode => {
             elNode.style.display = '';
           });
         });
@@ -16295,7 +16768,11 @@ function bindCoverHoldZoom(wrapEl) {
           if (matched) sectionMatchCount++;
         });
 
-        sec.querySelectorAll('.m3-group, details').forEach(grp => {
+        sec.querySelectorAll('.settings-advanced-notice, .settings-more-link').forEach(extra => {
+          extra.style.display = 'none';
+        });
+
+        sec.querySelectorAll('.m3-group, .settings-group, details').forEach(grp => {
           const visibleInGrp = Array.from(grp.querySelectorAll('.setting-item')).some(it => it.style.display !== 'none');
           grp.style.display = visibleInGrp ? '' : 'none';
           if (visibleInGrp && grp.tagName === 'DETAILS') grp.open = true;
@@ -17529,7 +18006,7 @@ function bindCoverHoldZoom(wrapEl) {
   (function initUpdateUI() {
     const api = window.electronAPI;
     const $ = (id) => document.getElementById(id);
-    let currentAppVersion = '43.1.0';
+    let currentAppVersion = '1.1.0';
     if (api && api.getAppVersion) {
       api.getAppVersion().then((v) => {
         if (v) {
@@ -17611,7 +18088,7 @@ function bindCoverHoldZoom(wrapEl) {
       if (!manualUpdateCheck && rawVer && ignoredVer === rawVer) return;
 
       const displayVer = rawVer.endsWith('.0.0') ? ('v' + rawVer.slice(0, -4)) : (rawVer.endsWith('.0') ? ('v' + rawVer.slice(0, -2)) : ('v' + rawVer));
-      if (verEl) verEl.textContent = displayVer || 'v43.1';
+      if (verEl) verEl.textContent = displayVer || 'v1.1';
       if (timeEl) timeEl.textContent = formatRelativeReleaseTime(info?.publishedAt || info?.releaseDate || '');
 
       const { cleanText, bannerUrl } = parseGithubReleaseBodyAndBanner(info?.releaseNotes || '');
@@ -20256,7 +20733,7 @@ function bindCoverHoldZoom(wrapEl) {
       if (typeof showToast === 'function') showToast('No playlists to export', 'error');
       return;
     }
-    let appVer = '43.1.0';
+    let appVer = '1.1.0';
     try {
       if (window.electronAPI && window.electronAPI.getAppVersion) {
         const v = await window.electronAPI.getAppVersion();
@@ -22370,7 +22847,7 @@ function bindCoverHoldZoom(wrapEl) {
     const thumbUrl = (typeof getTrackThumbUrl === 'function' ? getTrackThumbUrl(track) : '') || track.thumbnail || track.cover || track.image || '';
     card.innerHTML = `
       <div class="my-wave-track-cover-wrap">
-        <img class="my-wave-track-cover" src="${escapeHtml(thumbUrl)}" alt="" onerror="this.src='data:image/svg+xml;utf8,<svg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'280\\' height=\\'280\\' fill=\\'%23555\\'><rect width=\\'100%\\' height=\\'100%\\'/></svg>'">
+        <img class="my-wave-track-cover" src="${escapeHtml(thumbUrl)}" alt="" onerror="this.src='data:image/svg+xml;utf8,<svg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'280\\' height=\\'280\\' fill=\\'%23555\\'><rect width=\\'100%\\' height=\\'100%\\'/></svg>'" decoding="async" loading="lazy">
         <div class="my-wave-track-play-overlay">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
         </div>
@@ -24618,7 +25095,7 @@ function bindCoverHoldZoom(wrapEl) {
     });
   }
 
-  const DEFAULT_SIDEBAR_ORDER = ['discover', 'favorites', 'albums', 'local', 'history', 'queue'];
+  const DEFAULT_SIDEBAR_ORDER = ['discover', 'search', 'favorites', 'albums', 'local', 'downloads', 'history', 'queue', 'wrapped'];
 
   const SIDEBAR_ITEM_DEFS = {
     discover: { name: 'Home', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>' },
@@ -24626,7 +25103,10 @@ function bindCoverHoldZoom(wrapEl) {
     albums: { name: 'Albums', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>' },
     local: { name: 'My files', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>' },
     history: { name: 'History', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>' },
-    queue: { name: 'Queue', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="14" y2="17"/></svg>' }
+    queue: { name: 'Queue', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="14" y2="17"/></svg>' },
+    search: { name: 'Search', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg>' },
+    downloads: { name: 'Downloads', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12"/><polyline points="7 11 12 16 17 11"/><path d="M5 21h14"/></svg>' },
+    wrapped: { name: 'Wrapped', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l1.9 4.6 4.6 1.9-4.6 1.9L12 16l-1.9-4.6L5.5 9.5l4.6-1.9L12 3Z"/></svg>' }
   };
 
   function getSidebarOrder() {

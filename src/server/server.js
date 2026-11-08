@@ -1565,6 +1565,83 @@ function executeYtDlp(args, timeoutMs = 15000, opts = {}) {
 
 const thumbHostFails = new Map();
 
+// ---------------------------------------------------------------------------
+// Thumbnail proxy cache
+//
+// Three tiers: a bounded in-memory LRU (hot), the on-disk cache in
+// THUMBNAILS_DIR (warm), and the origin CDN (cold). Requests for the same key
+// are coalesced so a screen full of identical covers costs one network fetch.
+// ---------------------------------------------------------------------------
+const THUMB_MEM_CACHE_MAX_BYTES = 64 * 1024 * 1024; // ~64 MB ceiling
+const THUMB_MEM_CACHE_MAX_ENTRIES = 600;
+const thumbMemCache = new Map(); // key -> { buffer, type, bytes }; insertion order = LRU order
+const thumbInflight = new Map(); // key -> Promise
+let thumbMemCacheBytes = 0;
+
+function thumbMemCacheGet(key) {
+  const hit = thumbMemCache.get(key);
+  if (!hit) return null;
+  // Re-insert to mark as most-recently-used.
+  thumbMemCache.delete(key);
+  thumbMemCache.set(key, hit);
+  return hit;
+}
+
+function thumbMemCacheSet(key, buffer, type) {
+  // Don't let one oversized art blob evict the whole working set.
+  if (!buffer || buffer.length > 4 * 1024 * 1024) return;
+  const prev = thumbMemCache.get(key);
+  if (prev) {
+    thumbMemCacheBytes -= prev.bytes;
+    thumbMemCache.delete(key);
+  }
+  const entry = { buffer, type, bytes: buffer.length };
+  thumbMemCache.set(key, entry);
+  thumbMemCacheBytes += entry.bytes;
+  while (
+    thumbMemCache.size > THUMB_MEM_CACHE_MAX_ENTRIES ||
+    thumbMemCacheBytes > THUMB_MEM_CACHE_MAX_BYTES
+  ) {
+    const oldestKey = thumbMemCache.keys().next().value;
+    if (oldestKey === undefined) break;
+    const oldest = thumbMemCache.get(oldestKey);
+    thumbMemCache.delete(oldestKey);
+    thumbMemCacheBytes -= oldest ? oldest.bytes : 0;
+  }
+  if (thumbMemCacheBytes < 0) thumbMemCacheBytes = 0;
+}
+
+function thumbMemCacheClear() {
+  thumbMemCache.clear();
+  thumbMemCacheBytes = 0;
+}
+
+// Immutable + ETag: after the first paint the renderer either skips the request
+// entirely (immutable) or revalidates with a conditional we answer as a 304.
+function sendProxiedImage(req, res, buffer, type, key) {
+  const etag = '"' + key + '"';
+  // The renderer loads covers with crossOrigin="Anonymous" so it can sample
+  // dominant colours from a canvas. Without these headers the image would fail
+  // to load outright, so they are required, not cosmetic.
+  const cors = {
+    'Access-Control-Allow-Origin': '*',
+    'Cross-Origin-Resource-Policy': 'cross-origin',
+    'Timing-Allow-Origin': '*'
+  };
+  if (req.headers['if-none-match'] === etag) {
+    res.writeHead(304, Object.assign({ ETag: etag, 'Cache-Control': 'public, max-age=31536000, immutable' }, cors));
+    return res.end();
+  }
+  res.writeHead(200, Object.assign({
+    'Content-Type': type || 'image/jpeg',
+    'Content-Length': buffer.length,
+    'Cache-Control': 'public, max-age=31536000, immutable',
+    ETag: etag
+  }, cors));
+  if (req.method === 'HEAD') return res.end();
+  return res.end(buffer);
+}
+
 async function lookupCoverArt(artist, title) {
   const key = crypto.createHash('sha1').update(`${artist}\u0000${title}`.toLowerCase()).digest('hex').slice(0, 16);
   const dest = path.join(THUMBNAILS_DIR, `cover-${key}.jpg`);
@@ -1611,11 +1688,18 @@ async function fetchTrackCoverUrl(artist, title) {
   return '';
 }
 
-async function imageContentType(buf) {
-  if (buf.length > 3 && buf[0] === 0xff && buf[1] === 0xd8) return 'image/jpeg';
-  if (buf.length > 8 && buf[0] === 0x89 && buf[1] === 0x50) return 'image/png';
-  if (buf.length > 12 && buf.toString('ascii', 0, 4) === 'MOODEX' && buf.toString('ascii', 8, 12) === 'WEBP') return 'image/webp';
+// NOTE: intentionally synchronous. This used to be declared `async`, which meant
+// every caller that did `{ 'Content-Type': imageContentType(buf) }` wrote the
+// literal header value "[object Promise]" instead of a real MIME type.
+function imageContentType(buf) {
+  if (!buf || buf.length < 4) return 'application/octet-stream';
+  if (buf[0] === 0xff && buf[1] === 0xd8) return 'image/jpeg';
+  if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) return 'image/png';
+  // RIFF....WEBP - the previous check compared a 4-byte read against 'MOODEX',
+  // which could never match, so every WebP was mislabelled as JPEG.
+  if (buf.length > 12 && buf.toString('ascii', 0, 4) === 'RIFF' && buf.toString('ascii', 8, 12) === 'WEBP') return 'image/webp';
   if (buf.length > 6 && buf.toString('ascii', 0, 3) === 'GIF') return 'image/gif';
+  if (buf.length > 12 && buf.toString('ascii', 4, 12) === 'ftypavif') return 'image/avif';
   return 'image/jpeg';
 }
 
@@ -7728,41 +7812,67 @@ const server = http.createServer(async (req, res) => {
       return res.end();
     }
     const key = crypto.createHash('sha1').update(target).digest('hex');
-    const cachePath = path.join(THUMBNAILS_DIR, `proxy-${key}.img`);
-    let buffer = null;
-    try {
-      if (fs.existsSync(cachePath)) buffer = await fs.promises.readFile(cachePath);
-    } catch (e) {}
-    let host = '';
-    try { host = new URL(target).hostname; } catch (e) {}
-    const hostDead = !!host && (thumbHostFails.get(host) || 0) > Date.now();
-    if (!buffer && !hostDead) {
-      try {
-        const r = await fetch(target, {
-          signal: AbortSignal.timeout(6000),
-          headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36' }
-        });
-        if (!r.ok) throw new Error(String(r.status));
-        const data = Buffer.from(await r.arrayBuffer());
-        if (data.length < 500) throw new Error('empty image');
-        buffer = data;
-        fs.promises.writeFile(cachePath, data).catch(() => {});
-      } catch (e) {
-        if (host) thumbHostFails.set(host, Date.now() + 600000);
-      }
+
+    // Tier 1: hot in-memory LRU. Avoids a disk round-trip for the covers that
+    // are actually on screen, which is what makes repeat renders feel instant.
+    const hot = thumbMemCacheGet(key);
+    if (hot) return sendProxiedImage(req, res, hot.buffer, hot.type, key);
+
+    // Tiers 2 and 3 (disk, then network) are funnelled through one promise per
+    // key, so a grid asking for the same cover 40 times performs one fetch.
+    let job = thumbInflight.get(key);
+    if (!job) {
+      job = (async () => {
+        const cachePath = path.join(THUMBNAILS_DIR, `proxy-${key}.img`);
+        let buffer = null;
+        try { buffer = await fs.promises.readFile(cachePath); } catch (e) { /* cache miss */ }
+
+        if (!buffer) {
+          let host = '';
+          try { host = new URL(target).hostname; } catch (e) {}
+          const hostDead = !!host && (thumbHostFails.get(host) || 0) > Date.now();
+          if (!hostDead) {
+            try {
+              const r = await fetch(target, {
+                signal: AbortSignal.timeout(6000),
+                headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36' }
+              });
+              if (!r.ok) throw new Error(String(r.status));
+              const data = Buffer.from(await r.arrayBuffer());
+              if (data.length < 500) throw new Error('empty image');
+              buffer = data;
+              fs.promises.writeFile(cachePath, data).catch(() => {});
+            } catch (e) {
+              if (host) thumbHostFails.set(host, Date.now() + 600000);
+            }
+          }
+        }
+        if (!buffer && parsedUrl.query.artist && parsedUrl.query.title) {
+          const alt = await lookupCoverArt(parsedUrl.query.artist, parsedUrl.query.title);
+          if (alt) {
+            try { buffer = await fs.promises.readFile(alt); } catch (e) {}
+          }
+        }
+        if (!buffer) return null;
+        const type = imageContentType(buffer);
+        thumbMemCacheSet(key, buffer, type);
+        return { buffer, type };
+      })().finally(() => { thumbInflight.delete(key); });
+      thumbInflight.set(key, job);
     }
-    if (!buffer && parsedUrl.query.artist && parsedUrl.query.title) {
-      const alt = await lookupCoverArt(parsedUrl.query.artist, parsedUrl.query.title);
-      if (alt) {
-        try { buffer = await fs.promises.readFile(alt); } catch (e) {}
-      }
-    }
-    if (!buffer) {
-      res.writeHead(302, { Location: target });
+
+    let result = null;
+    try { result = await job; } catch (e) { result = null; }
+    if (!result) {
+      // Let the renderer fall back to the origin CDN rather than showing a hole.
+      res.writeHead(302, {
+        Location: target,
+        'Cache-Control': 'no-store',
+        'Access-Control-Allow-Origin': '*'
+      });
       return res.end();
     }
-    res.writeHead(200, { 'Content-Type': imageContentType(buffer), 'Cache-Control': 'public, max-age=31536000' });
-    return res.end(buffer);
+    return sendProxiedImage(req, res, result.buffer, result.type, key);
   }
 
   if (parsedUrl.pathname === '/api/local-thumbnail') {
