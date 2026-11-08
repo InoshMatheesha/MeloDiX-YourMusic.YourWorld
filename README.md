@@ -20,11 +20,11 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/inoshmatheesha/moodex/releases">
+  <a href="https://github.com/InoshMatheesha/Moodex-Music-Player/releases">
     <img src="https://img.shields.io/badge/Download-6750A4?style=for-the-badge&logo=download&logoColor=white" height="40" alt="Download">
   </a>
   &nbsp;
-  <a href="https://moodex.hs.vc">
+  <a href="https://github.com/InoshMatheesha/Moodex-Music-Player">
     <img src="https://img.shields.io/badge/Website-1F2328?style=for-the-badge&logo=open-webui&logoColor=white" height="40" alt="Visit Website">
   </a>
 </p>
