@@ -1,0 +1,10 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Moodex mark: filled M flanked by a waveform -->
+  <g fill="#ffffff">
+    <rect x="66"  y="206" width="22" height="100" rx="11"/>
+    <rect x="100" y="171" width="22" height="170" rx="11"/>
+    <rect x="390" y="171" width="22" height="170" rx="11"/>
+    <rect x="424" y="206" width="22" height="100" rx="11"/>
+    <path d="M127 350 L127 168 L173 168 L256 228 L339 168 L385 168 L385 350 L339 350 L339 250 L256 310 L173 250 L173 350 Z"/>
+  </g>
+</svg>
