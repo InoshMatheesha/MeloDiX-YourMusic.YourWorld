@@ -3,12 +3,10 @@
 </p>
 
 <p align="center">
-  <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/windows8/windows8-original.svg" width="22" height="22" alt="Windows">
-</p>
-
-<h1 align="center">
+  <h1 align="center">
   <img src="github/readme/emoj2i.gif" width="60" height="40" align="absmiddle" alt="emoji">&nbsp;Melodix
 </h1>
+</p>
 
 <p align="center">
   <b>Your Music. Your World.</b><br>
