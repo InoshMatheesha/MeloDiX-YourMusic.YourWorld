@@ -119,41 +119,30 @@ you change:
 
 ## Screenshots
 
-<!--
-  Drop your screenshots into github/readme/ using these exact filenames and they
-  will appear here automatically. Delete any row you do not have an image for.
--->
-
 <p align="center">
-  <img src="github/readme/home.png" alt="Melodix home page" width="88%">
+  <img src="github/readme/HomePage.png" alt="Melodix home page with For you mixes, liked songs and the lyrics panel" width="92%">
+</p>
+<p align="center">
+  <b>Home</b> — <i>For you</i> and Daily Mixes built from your listening, with the lyrics panel docked beside the player.
 </p>
 
 <table>
   <tr>
-    <td width="50%"><img src="github/readme/now-playing.png" alt="Now Playing"></td>
-    <td width="50%"><img src="github/readme/lyrics.png" alt="Synced lyrics"></td>
+    <td width="50%"><img src="github/readme/MusicCover.png" alt="Full-screen Now Playing view with large cover art"></td>
+    <td width="50%"><img src="github/readme/WrappedSection.png" alt="Wrapped statistics showing tracks played, time listened, top tracks and top artists"></td>
   </tr>
   <tr>
-    <td align="center"><b>Now Playing</b></td>
-    <td align="center"><b>Synced lyrics</b></td>
-  </tr>
-  <tr>
-    <td width="50%"><img src="github/readme/karaoke.png" alt="TV Karaoke mode"></td>
-    <td width="50%"><img src="github/readme/audio.png" alt="Audio suite and equalizer"></td>
-  </tr>
-  <tr>
-    <td align="center"><b>TV Karaoke</b></td>
-    <td align="center"><b>Audio suite</b></td>
-  </tr>
-  <tr>
-    <td width="50%"><img src="github/readme/library.png" alt="Library and playlists"></td>
-    <td width="50%"><img src="github/readme/themes.png" alt="Themes and appearance"></td>
-  </tr>
-  <tr>
-    <td align="center"><b>Library</b></td>
-    <td align="center"><b>Appearance</b></td>
+    <td align="center"><b>Now Playing</b><br><sub>Full-screen cover view with ambient color pulled from the artwork</sub></td>
+    <td align="center"><b>Wrapped</b><br><sub>A running picture of your listening — top tracks, top artists and totals</sub></td>
   </tr>
 </table>
+
+<p align="center">
+  <img src="github/readme/About.png" alt="Settings About page styled as vinyl liner notes" width="92%">
+</p>
+<p align="center">
+  <b>Settings</b> — the About page, styled as a record sleeve, with updates, shortcuts, diagnostics and your listening stats.
+</p>
 
 ---
 
