@@ -25,6 +25,7 @@
 </p>
 
 <p align="center">
+  <a href="#whats-new">What's new</a> &nbsp;·&nbsp;
   <a href="#core-features">Features</a> &nbsp;·&nbsp;
   <a href="#built-in-audio-suite">Audio Suite</a> &nbsp;·&nbsp;
   <a href="#material-design-3-expressive-ui">Interface</a> &nbsp;·&nbsp;
@@ -59,13 +60,35 @@ downloads stay on your machine.
 
 ---
 
+## What's new
+
+**v1.1.14**
+- The glow around the active sidebar button (Settings, at the bottom of the collapsed sidebar) is no longer cut off. It is now a soft halo in your accent colour.
+
+**v1.1.13**
+- **Updates work again.** *Check for updates* found new versions but the update window stayed invisible. It now shows, and **Update** installs and reopens Melodix on its own.
+- A small **Update available** pill appears at the top right of Home when a new version is out. Nothing pops up by itself.
+- **Later** installs the update quietly the next time you close the app.
+
+**v1.1.12**
+- **Drag to reorder** in the Queue, Liked songs and playlists now behaves like Spotify: drag to the edge and the list scrolls with you, and the track stays where you drop it.
+- Visualizer and shaped-cover settings moved out of Advanced into one compact card under **Settings → Tracks**.
+
+**v1.1.11**
+- A much fuller **Home page**: *Because you listened to…*, *On repeat*, *New releases*, regional charts and genre shelves.
+- **Play next** in the right-click menu.
+- Reorganised Settings. Plugins and custom theme files were removed.
+
+---
+
 ## Core features
 
 | | |
 | :-- | :-- |
 | **Multi-source search** | One search bar over YouTube Music, YouTube, SoundCloud, Spotify and Yandex Music. Pick your default engine in Settings. |
 | **Local library** | Point Melodix at a music folder and it indexes your own files alongside everything else. Albums, artists and a dedicated **My files** tab. |
-| **Playlists** | Create, reorder and delete playlists. Favorites, listening history, and *Jump back in* on the home page. |
+| **Home page** | Rows that fill themselves from your listening: *For you* mixes, *Because you listened to…*, *On repeat*, your top artists and artists you might like, plus *New releases*, regional charts and genre shelves. |
+| **Playlists & queue** | Create and delete playlists, and drag tracks to reorder them in playlists, Liked songs and the queue. Right-click any song for **Play next** or **Add to queue**. |
 | **Import & export** | Import playlists from **Spotify**, **Apple Music**, a plain link, or JSON. Export all playlists to JSON, or your whole profile as a portable `.mdacc` account file. |
 | **Synced lyrics** | Online lyric lookup with auto-scroll, word-by-word highlighting, a **custom lyrics editor**, and auto-translation into your language. |
 | **TV Karaoke mode** | Full-screen karaoke with word highlighting and an optional visualizer behind the words. |
@@ -75,11 +98,10 @@ downloads stay on your machine.
 | **Mini player** | A compact, always-handy player — press <kbd>P</kbd>. |
 | **Discord Rich Presence** | Show what you are playing on your Discord profile, with an option to include the artist. |
 | **Last.fm scrobbling** | Scrobble your listens to Last.fm. |
-| **Plugins & themes** | Drop in `.js` plugins and `.css` themes to extend and restyle the app. See [Extending Melodix](#extending-melodix). |
 | **Sleep timer** | Fade out and stop after a set time. |
 | **Tray & media keys** | Minimize to tray on close, and full media-key support, including a legacy capture mode for Windows. |
 | **Blocklist** | Mute artists and tracks you never want to hear again. |
-| **In-app updates** | Melodix checks for new releases and can install them for you on Windows and the Linux AppImage. |
+| **In-app updates** | Melodix checks for new releases in the background and shows a small **Update available** pill on Home. One click installs and reopens the app (Windows installer and Linux AppImage). |
 
 ---
 
@@ -95,7 +117,7 @@ any external tools.
 - **Crossfade** — smooth transitions between tracks.
 - **Volume gain** — push past 100% when a track is mastered quietly.
 - **Audio output device** — send playback to a specific output.
-- **Live visualizer** — pick from `bars`, `wave`, `orbit`, `vinyl`, `aurora`, `liquid` and `mirror`, with sensitivity, smoothness and opacity controls. A compact wave visualizer can also sit in the bottom bar.
+- **Live visualizer** — pick from `bars`, `liquid`, `mirror`, `peaks`, `LED`, `neon`, `aurora` and `orbit`. Opacity, sensitivity and smoothness for the playbar and karaoke visualizers live together under **Settings → Tracks → Visualizer & cover tuning**.
 
 ---
 
@@ -107,13 +129,14 @@ you change:
 - **Theme** — light / dark / system, a custom **accent color**, palette style, hue, brightness and intensity.
 - **Dynamic color** — a mesh gradient and ambient light that can take their colors from the current cover art.
 - **Banners** — per-track banners with blur, fade, fit, opacity and custom effects; use images or video as background media.
-- **Covers** — shaped cover art in Now Playing, karaoke and the bottom bar.
+- **Covers** — eleven cover shapes (morph, circle, squircle, cookie, flower, star, heart and more) for the bottom bar, Now Playing and karaoke.
+- **Settings** — grouped into *Personalize*, *Listening*, *Connections* and *System*, with a search box that finds any option.
 - **Layout** — rearrange the sidebar and home page, switch to a classic sidebar, move the search bar, hide the titlebar, or hide the engine buttons.
 - **Typography & scale** — interface font, font scale and overall UI scale.
 - **Progress bar** — wavy or plain, with custom knob and background styling.
 - **Accessibility** — reduce motion, a **Performance mode** for lower-end machines, a *No-Hand* cursor mode, interface opacity, and full right-to-left layout support.
 - **132 interface languages** — the UI auto-translates, including RTL languages such as Arabic, Persian, Hebrew and Urdu.
-- **CSS editor** — a built-in editor for live-tweaking the interface.
+- **CSS editor** — a built-in editor under **Settings → Advanced** for live-tweaking the interface.
 
 ---
 
@@ -201,41 +224,18 @@ Set `MOODEX_DATA_DIR` to move it somewhere else.
 
 ---
 
-## Extending Melodix
+## Customizing with CSS
 
-### Plugins
-
-Plugins are single `.js` files with a metadata header. Add them through
-**Settings → Plugins → Add**, then pick the file.
-
-```js
-/**
- * @name Hello plugin
- * @author You
- * @version 1.0.0
- * @description Shows a message when the track changes.
- */
-const off = Moodex.on('trackchange', (track) => Moodex.toast('Now playing: ' + track.title));
-return { stop() { off(); } };
-```
-
-A ready-made example, `better-shuffle.js`, lives in [plugin/](plugin/).
-
-### Themes
-
-Themes are plain CSS files with the same style of header. Add them through
-**Settings → Appearance → Themes**.
+Plugins and custom theme files were removed in v1.1.11. For your own tweaks, use the
+built-in **CSS editor** in **Settings → Advanced**. Melodix sets its colours from
+JavaScript, so add `!important` to override them:
 
 ```css
-/*
- * @name Midnight
- * @author You
- * @description A darker take on the default palette.
- */
-:root { --md-sys-color-primary: #8EEDD8; }
+:root { --md-sys-color-primary: #8EEDD8 !important; }
 ```
 
-For quick one-off tweaks, use the built-in **CSS editor** instead.
+If a tweak breaks the layout, <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>R</kbd>
+turns all custom CSS off.
 
 ---
 
@@ -259,16 +259,32 @@ npm start
 | `npm run dist` | Build installers for your platform into `dist/`. |
 | `npm run release` | Bump the patch version and push the tag, which triggers the release workflow. |
 
+### Publishing a release by hand
+
+If the GitHub Actions release workflow can't run, build on Windows and publish with
+the [GitHub CLI](https://cli.github.com/). The in-app updater needs `latest.yml`, the
+setup `.exe` and its `.blockmap` on the release:
+
+```bash
+npm version patch                     # bump the version and create the tag
+git push origin main v<version>       # push the commit and that tag
+npx electron-builder --win --publish never
+gh release create v<version> --latest --title "MeloDiX v<version>" --notes "..."   dist/latest.yml dist/moodex-<version>-win-x64-setup.exe   dist/moodex-<version>-win-x64-setup.exe.blockmap dist/moodex-<version>-win-x64-portable.exe
+```
+
+Installed copies then pick up the new version on their own (shown as the
+*Update available* pill on Home), or straight away from
+**Settings → About → Check for updates**.
+
 ### Project layout
 
 ```
 src/
-  main/       Electron main process — window, CLI, plugins, themes, updater, Discord RPC
+  main/       Electron main process — window, CLI, updater, Discord RPC
   renderer/   The UI — app.js, audio.js (Web Audio chain), shapes.js, styles.css
   server/     Local backend — search, streaming, yt-dlp/ffmpeg management
   shared/     Cross-process helpers — paths, logging, audio output
 assets/       Icons, logo and the built-in cover shapes
-plugin/       Example plugin
 test/         Unit tests
 ```
 

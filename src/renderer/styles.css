@@ -12023,13 +12023,23 @@ body.perf .sp-card-play { transition: none; }
 @media (max-width: 760px) { .viz-tune-grid, .viz-tune-switches { grid-template-columns: 1fr; } }
 
 /* ===================================================================
-   Collapsed sidebar: keep the active button's glow inside the rounded
-   panel (it was clipped at the bottom-left corner on Settings)
+   Sidebar glow: room to breathe
+   .sidebar-nav is a scroll container, and a scroll container clips what
+   its children paint outside its padding box. Its box ended exactly at the
+   bottom of the Settings button, so the active glow was cut off flat. The
+   nav now carries the bottom spacing as padding (the glow fades out inside
+   it) and the sidebar's own bottom padding shrinks by the same amount, so
+   nothing moves.
    =================================================================== */
-body:not(.classic-sidebar):not(.mini) .sidebar.rail-collapsed { padding-bottom: 26px !important; }
+.sidebar-nav { padding-bottom: 18px !important; box-sizing: border-box; }
+body:not(.classic-sidebar):not(.mini) .sidebar.rail-collapsed { padding-bottom: 8px !important; }
+body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) { padding-bottom: 0 !important; }
+
+/* Collapsed rail: an accent-coloured halo (a soft ring + short blur) that
+   fits in the 16px beside the button instead of a wide blue/cyan bloom. */
 .sidebar.rail-collapsed .nav-item.active .nav-indicator {
-  box-shadow: 0 0 8px color-mix(in srgb, var(--moodex-blue) 55%, transparent),
-              0 0 14px color-mix(in srgb, var(--moodex-cyan) 26%, transparent) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--md-sys-color-primary) 22%, transparent),
+              0 0 12px 1px color-mix(in srgb, var(--md-sys-color-primary) 42%, transparent) !important;
 }
 
 /* ===================================================================
