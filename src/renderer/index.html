@@ -1639,6 +1639,76 @@
               </div>
             </div>
 
+            <div class="setting-item viz-tune" id="setting-viz-tuning">
+              <div class="setting-item-top" style="align-items: center;">
+                <div style="display: flex; flex-direction: column; gap: 2px;">
+                  <span class="setting-name">Visualizer &amp; cover tuning</span>
+                  <span class="setting-hint">Opacity, sensitivity and smoothness for the playbar and karaoke visualizers, plus shaped covers</span>
+                </div>
+              </div>
+
+              <div class="viz-tune-block">
+                <div class="viz-tune-head">
+                  <span class="viz-tune-label" data-i18n>Playbar visualizer</span>
+                  <div class="theme-mode-selector viz-tune-seg" id="bar-viz-pos-group">
+                    <button type="button" class="theme-mode-btn" data-bar-viz-pos="mini" data-i18n>Compact</button>
+                    <button type="button" class="theme-mode-btn active" data-bar-viz-pos="behind" data-i18n>Behind bar</button>
+                  </div>
+                </div>
+                <div class="viz-tune-grid">
+                  <div class="viz-cell">
+                    <span class="viz-cell-top"><span data-i18n>Opacity</span><span class="setting-val" id="val-bar-viz-opacity">22%</span></span>
+                    <input type="range" class="pill-range" id="slider-bar-viz-opacity" min="5" max="85" step="1" value="22">
+                  </div>
+                  <div class="viz-cell">
+                    <span class="viz-cell-top"><span data-i18n>Sensitivity</span><span class="setting-val" id="val-bar-viz-sens">100%</span></span>
+                    <input type="range" class="pill-range" id="slider-bar-viz-sens" min="20" max="250" step="5" value="100">
+                  </div>
+                  <div class="viz-cell">
+                    <span class="viz-cell-top"><span data-i18n>Smoothness</span><span class="setting-val" id="val-bar-viz-smooth">55%</span></span>
+                    <input type="range" class="pill-range" id="slider-bar-viz-smooth" min="0" max="90" step="5" value="55">
+                  </div>
+                </div>
+              </div>
+
+              <div class="viz-tune-block">
+                <div class="viz-tune-head">
+                  <span class="viz-tune-label" data-i18n>Karaoke visualizer</span>
+                </div>
+                <div class="viz-tune-switches">
+                  <div class="viz-switch"><span data-i18n>When a track has no lyrics</span><button type="button" class="effect-switch-btn active" id="btn-tvk-visualizer-setting"><span class="thumb"></span></button></div>
+                  <div class="viz-switch"><span data-i18n>Also under lyrics</span><button type="button" class="effect-switch-btn active" id="btn-tvk-visualizer-lyrics-setting"><span class="thumb"></span></button></div>
+                </div>
+                <div class="viz-tune-grid">
+                  <div class="viz-cell">
+                    <span class="viz-cell-top"><span data-i18n>Opacity</span><span class="setting-val" id="val-tvk-vis-opacity-setting">85%</span></span>
+                    <input type="range" class="pill-range" id="slider-tvk-vis-opacity-setting" min="10" max="100" step="5" value="85">
+                  </div>
+                  <div class="viz-cell">
+                    <span class="viz-cell-top"><span data-i18n>Sensitivity</span><span class="setting-val" id="val-viz-sens">100%</span></span>
+                    <input type="range" class="pill-range" id="slider-viz-sens" min="0" max="300" step="5" value="100">
+                  </div>
+                  <div class="viz-cell">
+                    <span class="viz-cell-top"><span data-i18n>Smoothness</span><span class="setting-val" id="val-viz-smooth">0%</span></span>
+                    <input type="range" class="pill-range" id="slider-viz-smooth" min="0" max="95" step="1" value="0">
+                  </div>
+                </div>
+              </div>
+
+              <div class="viz-tune-block">
+                <div class="viz-tune-head">
+                  <span class="viz-tune-label" data-i18n>Shaped covers</span>
+                </div>
+                <div class="viz-tune-switches">
+                  <div class="viz-switch"><span data-i18n>Bottom bar</span><button type="button" class="effect-switch-btn active" id="toggle-m3-cover"><span class="thumb"></span></button></div>
+                  <div class="viz-switch"><span data-i18n>Now Playing &amp; Karaoke</span><button type="button" class="effect-switch-btn" id="toggle-m3-hero-covers"><span class="thumb"></span></button></div>
+                </div>
+              </div>
+
+              <div hidden><button type="button" class="effect-switch-btn" id="btn-viz-connected"><span class="thumb"></span></button></div>
+            </div>
+
+
             <div class="setting-item" hidden>
                     <div class="setting-item-top" style="align-items: center;">
                       <span class="setting-name">Wavy progress bar</span>
@@ -2437,146 +2507,6 @@
                             <button class="effect-switch-btn active" id="btn-no-hand-cursor"><span
                                 class="thumb"></span></button>
                           </div>
-                        </div>
-                        <div class="setting-item">
-                          <div class="setting-item-top" style="align-items: center;">
-                            <div style="display: flex; flex-direction: column; gap: 2px;">
-                              <span class="setting-name">Shaped cover in the bottom bar</span>
-                              <span
-                                style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Morphing
-                                Material 3 shape with a wavy progress ring around the cover</span>
-                            </div>
-                            <button class="effect-switch-btn active" id="toggle-m3-cover"><span
-                                class="thumb"></span></button>
-                          </div>
-                        </div>
-                        <div class="setting-item">
-                          <div class="setting-item-top" style="align-items: center;">
-                            <div style="display: flex; flex-direction: column; gap: 2px;">
-                              <span class="setting-name" data-i18n>Shaped covers in Now Playing & Karaoke</span>
-                              <span
-                                style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);"
-                                data-i18n>Apply morphing Material 3 shape to Now Playing and Fullscreen covers</span>
-                            </div>
-                            <button type="button" class="effect-switch-btn" id="toggle-m3-hero-covers"><span
-                                class="thumb"></span></button>
-                          </div>
-                        </div>
-                      </div>
-                      <div class="settings-group">
-                        <div class="settings-group-title">Visualizer tuning</div>
-                        <div class="setting-item">
-                          <div class="setting-item-top" style="align-items: center;">
-                            <div style="display: flex; flex-direction: column; gap: 2px;">
-                              <span class="setting-name" data-i18n>Playbar visualizer position</span>
-                              <span class="setting-hint" data-i18n>Show visualizer as a small icon on the right or wide
-                                behind the playbar</span>
-                            </div>
-                            <div class="theme-mode-selector" id="bar-viz-pos-group">
-                              <button type="button" class="theme-mode-btn" data-bar-viz-pos="mini"
-                                data-i18n>Compact</button>
-                              <button type="button" class="theme-mode-btn active" data-bar-viz-pos="behind"
-                                data-i18n>Behind bar</button>
-                            </div>
-                          </div>
-                        </div>
-                        <div class="setting-item" id="setting-bar-viz-opacity">
-                          <div class="setting-item-top">
-                            <span class="setting-name" data-i18n>Playbar visualizer opacity</span>
-                            <span class="setting-val" id="val-bar-viz-opacity">22%</span>
-                          </div>
-                          <input type="range" class="pill-range" id="slider-bar-viz-opacity" min="5" max="85" step="1"
-                            value="22">
-                        </div>
-                        <div class="setting-item" id="setting-bar-viz-sens">
-                          <div class="setting-item-top">
-                            <span class="setting-name" data-i18n>Playbar visualizer sensitivity</span>
-                            <span class="setting-val" id="val-bar-viz-sens">100%</span>
-                          </div>
-                          <input type="range" class="pill-range" id="slider-bar-viz-sens" min="20" max="250" step="5"
-                            value="100">
-                        </div>
-                        <div class="setting-item" id="setting-bar-viz-smooth">
-                          <div class="setting-item-top">
-                            <span class="setting-name" data-i18n>Playbar visualizer smoothness</span>
-                            <span class="setting-val" id="val-bar-viz-smooth">55%</span>
-                          </div>
-                          <input type="range" class="pill-range" id="slider-bar-viz-smooth" min="0" max="90" step="5"
-                            value="55">
-                        </div>
-                        <div class="setting-item" hidden>
-                          <div class="setting-item-top" style="align-items:center;">
-                            <div style="display:flex;flex-direction:column;gap:2px;"><span class="setting-name"
-                                data-i18n>Connected liquid visualizer</span><span class="setting-hint" data-i18n>Draw a
-                                smooth connected liquid wave instead of separate bars</span></div><button type="button"
-                              class="effect-switch-btn" id="btn-viz-connected"><span class="thumb"></span></button>
-                          </div>
-                        </div>
-                        <div class="setting-item">
-                          <div class="setting-item-top" style="align-items: center;">
-                            <div style="display: flex; flex-direction: column; gap: 2px;">
-                              <span class="setting-name">Visualizer in full karaoke mode</span>
-                              <span
-                                style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Show
-                                wave visualizer when track has no lyrics</span>
-                            </div>
-                            <button class="effect-switch-btn active" id="btn-tvk-visualizer-setting"><span
-                                class="thumb"></span></button>
-                          </div>
-                        </div>
-                        <div class="setting-item">
-                          <div class="setting-item-top" style="align-items: center;">
-                            <div style="display: flex; flex-direction: column; gap: 2px;">
-                              <span class="setting-name">Visualizer with lyrics</span>
-                              <span
-                                style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Show
-                                wave visualizer at the bottom even when track has lyrics</span>
-                            </div>
-                            <button class="effect-switch-btn active" id="btn-tvk-visualizer-lyrics-setting"><span
-                                class="thumb"></span></button>
-                          </div>
-                        </div>
-                        <div class="setting-item">
-                          <div class="setting-item-top" style="align-items: center;">
-                            <div style="display: flex; flex-direction: column; gap: 2px;">
-                              <span class="setting-name">Visualizer opacity</span>
-                              <span
-                                style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Adjust
-                                transparency of the TV karaoke visualizer</span>
-                            </div>
-                            <span class="setting-val" id="val-tvk-vis-opacity-setting"
-                              style="font-size: calc(13px * var(--font-scale, 1)); font-weight: 500; min-width: 42px; text-align: right;">85%</span>
-                          </div>
-                          <input type="range" class="pill-range" id="slider-tvk-vis-opacity-setting" min="10" max="100"
-                            step="5" value="85" style="width: 100%; margin-top: 8px;">
-                        </div>
-                        <div class="setting-item">
-                          <div class="setting-item-top" style="align-items: center;">
-                            <div style="display: flex; flex-direction: column; gap: 2px;">
-                              <span class="setting-name">Visualizer smoothness</span>
-                              <span
-                                style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Higher
-                                = calmer, slower bars</span>
-                            </div>
-                            <span class="setting-val" id="val-viz-smooth"
-                              style="font-size: calc(13px * var(--font-scale, 1)); font-weight: 500; min-width: 42px; text-align: right;">0%</span>
-                          </div>
-                          <input type="range" class="pill-range" id="slider-viz-smooth" min="0" max="95" step="1"
-                            value="0" style="width: 100%; margin-top: 8px;">
-                        </div>
-                        <div class="setting-item">
-                          <div class="setting-item-top" style="align-items: center;">
-                            <div style="display: flex; flex-direction: column; gap: 2px;">
-                              <span class="setting-name">Visualizer sensitivity</span>
-                              <span
-                                style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Higher
-                                = taller bars</span>
-                            </div>
-                            <span class="setting-val" id="val-viz-sens"
-                              style="font-size: calc(13px * var(--font-scale, 1)); font-weight: 500; min-width: 42px; text-align: right;">100%</span>
-                          </div>
-                          <input type="range" class="pill-range" id="slider-viz-sens" min="0" max="300" step="5"
-                            value="100" style="width: 100%; margin-top: 8px;">
                         </div>
                       </div>
 

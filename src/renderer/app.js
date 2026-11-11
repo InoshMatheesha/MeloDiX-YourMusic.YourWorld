@@ -10588,6 +10588,35 @@ document.addEventListener('DOMContentLoaded', async () => {
       highlightPlayingRow();
     }
 
+    // Used by drag-to-reorder: add up to `extra` rows above and below the
+    // rendered window, without touching the rows already there (one of them
+    // is being held), so a track can be dragged far past the screen edge.
+    container._vExpand = (extra = 150) => {
+      const s0 = container._lastStartIndex;
+      const e0 = container._lastEndIndex;
+      if (s0 < 0 || e0 < 0) return;
+      const s1 = Math.max(0, s0 - extra);
+      const e1 = Math.min(tracks.length, e0 + extra);
+      if (s1 === s0 && e1 === e0) return;
+      const currentCanonicalId = state.currentTrack ? getTrackCanonicalId(state.currentTrack) : '';
+      const build = (from, to) => {
+        const frag = document.createDocumentFragment();
+        for (let idx = from; idx < to; idx++) {
+          const row = createTrackRow(tracks[idx], idx, currentCanonicalId, context, tracks, container);
+          row.style.animation = 'none';
+          frag.appendChild(row);
+        }
+        return frag;
+      };
+      if (s1 < s0) container.prepend(build(s1, s0));
+      if (e1 > e0) container.appendChild(build(e0, e1));
+      container.style.paddingTop = `${s1 * itemHeight}px`;
+      container.style.paddingBottom = `${(tracks.length - e1) * itemHeight}px`;
+      container._lastStartIndex = s1;
+      container._lastEndIndex = e1;
+      highlightPlayingRow();
+    };
+
     container._vScrollHandler = () => {
       if (!container._ticking) {
         window.requestAnimationFrame(() => {
@@ -12445,12 +12474,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
       }
       const savedScroll = el.mainContent ? el.mainContent.scrollTop : 0;
+      if (fromIdx < 0 || toIdx < 0 || fromIdx >= state.favorites.length || toIdx >= state.favorites.length) return;
       const [moved] = state.favorites.splice(fromIdx, 1);
       state.favorites.splice(toIdx, 0, moved);
       localStorage.setItem('devsize_favorites', JSON.stringify(state.favorites));
-      if (el.favoritesSubtitle) {
-        el.favoritesSubtitle.textContent = `${state.favorites.length} tracks saved`;
-      }
+      // Re-render from the saved order: the list was drawn from a copy, so
+      // without this the next scroll would bring the old order back.
+      renderFavoritesView();
       if (el.mainContent) el.mainContent.scrollTop = savedScroll;
     }
   });
@@ -12473,10 +12503,12 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
       const savedScroll = el.mainContent ? el.mainContent.scrollTop : 0;
       const pl = state.currentPlaylist || (state.playlists || []).find(p => p.id === state.currentPlaylistId);
-      if (pl && pl.tracks) {
+      if (pl && pl.tracks && fromIdx >= 0 && toIdx >= 0 && fromIdx < pl.tracks.length && toIdx < pl.tracks.length) {
         const [moved] = pl.tracks.splice(fromIdx, 1);
         pl.tracks.splice(toIdx, 0, moved);
         localStorage.setItem('devsize_playlists', JSON.stringify(state.playlists));
+        // Re-render from the saved order so scrolling can't bring the old one back.
+        if (el.playlistTracksList) renderTracks(el.playlistTracksList, sortTracksFor('playlist', pl.tracks), 'playlist');
       }
       if (el.mainContent) el.mainContent.scrollTop = savedScroll;
     }

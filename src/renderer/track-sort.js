@@ -24,6 +24,18 @@ function backfillAddedAt(tracks, newestFirst) {
   return changed ? list : tracks;
 }
 
+// The element that actually scrolls the list: the nearest ancestor whose
+// overflow lets it scroll and that has something to scroll.
+function findScrollParent(node) {
+  let el = node ? node.parentElement : null;
+  while (el && el !== document.body && el !== document.documentElement) {
+    const cs = getComputedStyle(el);
+    if (/(auto|scroll|overlay)/.test(cs.overflowY) && el.scrollHeight > el.clientHeight + 1) return el;
+    el = el.parentElement;
+  }
+  return document.querySelector('.main-content') || document.scrollingElement || document.documentElement;
+}
+
 function enableTrackSort(containerOrOpts, onReorderCb) {
   let container = null;
   let onReorder = null;
@@ -56,6 +68,22 @@ function enableTrackSort(containerOrOpts, onReorderCb) {
   let items = [];
   let draggedHeight = 0;
   let draggedStartTop = 0;
+  // Auto-scroll limits: the list is virtualised, so only the rows that exist
+  // in the DOM can be drop targets. Scrolling past them would drag over blank
+  // padding, so auto-scroll stops at the first/last rendered row.
+  let minScroll = 0;
+  let maxScroll = Infinity;
+
+  const isPageScroller = (el) => el === document.scrollingElement || el === document.documentElement || el === document.body;
+  const viewportRect = (el) => (isPageScroller(el)
+    ? { top: 0, bottom: window.innerHeight }
+    : el.getBoundingClientRect());
+  // Row's real position in the full track list (rows carry it in
+  // data-track-index); falls back to the DOM position.
+  const realIndex = (row, fallback) => {
+    const n = row ? parseInt(row.dataset.trackIndex, 10) : NaN;
+    return Number.isNaN(n) ? fallback : n;
+  };
 
   window.addEventListener('click', (e) => {
     if (suppressClick) {
@@ -67,8 +95,8 @@ function enableTrackSort(containerOrOpts, onReorderCb) {
 
   function autoScrollLoop() {
     if (!isDragging || !scrollEl) return;
-    if (typeof scrollEl.getBoundingClientRect === 'function') {
-      const rect = scrollEl.getBoundingClientRect();
+    {
+      const rect = viewportRect(scrollEl);
       const edge = 70;
       let speed = 0;
       if (lastClientY < rect.top + edge) {
@@ -79,8 +107,12 @@ function enableTrackSort(containerOrOpts, onReorderCb) {
         speed = Math.round(3 + factor * 15);
       }
       if (speed !== 0) {
-        scrollEl.scrollTop += speed;
-        updatePosition();
+        const cur = scrollEl.scrollTop;
+        const next = Math.max(Math.max(0, minScroll), Math.min(maxScroll, cur + speed));
+        if (next !== cur) {
+          scrollEl.scrollTop = next;
+          updatePosition();
+        }
       }
     }
     rafId = requestAnimationFrame(autoScrollLoop);
@@ -148,7 +180,21 @@ function enableTrackSort(containerOrOpts, onReorderCb) {
     isDragging = true;
     suppressClick = true;
 
-    scrollEl = container.closest('.content-view, .main-content, #main-content') || document.scrollingElement || document.documentElement;
+    scrollEl = findScrollParent(container);
+
+    // Freeze the virtual list for the whole drag: a re-render while dragging
+    // (e.g. triggered by auto-scroll) would replace the row being held and
+    // snap everything back.
+    container._isDraggingReorder = true;
+
+    // Render more rows around the visible window so the track can be dragged
+    // well beyond the screen, keeping the held row exactly where it was.
+    if (typeof container._vExpand === 'function') {
+      const before = draggedItem.getBoundingClientRect().top;
+      try { container._vExpand(150); } catch (_) {}
+      const after = draggedItem.getBoundingClientRect().top;
+      if (scrollEl && after !== before) scrollEl.scrollTop += (after - before);
+    }
     startScrollTop = scrollEl ? scrollEl.scrollTop : 0;
 
     container.dataset.isDraggingTrack = '1';
@@ -173,6 +219,17 @@ function enableTrackSort(containerOrOpts, onReorderCb) {
       top: el.offsetTop,
       height: el.offsetHeight
     }));
+
+    minScroll = 0;
+    maxScroll = Infinity;
+    if (scrollEl && items.length) {
+      const vr = viewportRect(scrollEl);
+      const viewH = vr.bottom - vr.top;
+      const firstTop = items[0].getBoundingClientRect().top - vr.top + scrollEl.scrollTop;
+      const lastBottom = items[items.length - 1].getBoundingClientRect().bottom - vr.top + scrollEl.scrollTop;
+      minScroll = firstTop - 90;
+      maxScroll = Math.max(scrollEl.scrollTop, lastBottom - viewH + 90);
+    }
 
     if (scrollEl) {
       scrollEl.addEventListener('scroll', onScroll, { passive: true });
@@ -273,6 +330,14 @@ function enableTrackSort(containerOrOpts, onReorderCb) {
         container.style.userSelect = '';
         container.classList.add('no-enter-anim');
 
+        // Real list positions, captured before the DOM is touched.
+        const fromReal = realIndex(items[fromIdx], fromIdx);
+        const toReal = realIndex(items[toIdx], toIdx);
+        const baseIndex = realIndex(items[0], 0);
+
+        // Let the virtual list render again (the reorder callback re-renders).
+        container._isDraggingReorder = false;
+
         if (fromIdx !== -1 && toIdx !== -1 && fromIdx !== toIdx) {
           const currentChildren = Array.from(container.querySelectorAll('.track-row'));
           if (toIdx > fromIdx) {
@@ -288,13 +353,13 @@ function enableTrackSort(containerOrOpts, onReorderCb) {
           }
 
           container.querySelectorAll('.track-row').forEach((r, i) => {
-            r.dataset.trackIndex = String(i);
+            r.dataset.trackIndex = String(baseIndex + i);
             const num = r.querySelector('.track-row-index');
-            if (num) num.textContent = String(i + 1);
+            if (num) num.textContent = String(baseIndex + i + 1);
           });
 
           if (typeof onReorder === 'function') {
-            onReorder(fromIdx, toIdx);
+            onReorder(fromReal, toReal);
           }
         }
 

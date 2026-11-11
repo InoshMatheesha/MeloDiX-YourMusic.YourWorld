@@ -11972,3 +11972,62 @@ body.perf .settings-hero::after { animation: none; }
 }
 .sp-card:hover .sp-card-play { opacity: 1; transform: none; }
 body.perf .sp-card-play { transition: none; }
+
+/* ===================================================================
+   Tracks > "Visualizer & cover tuning": one compact card instead of
+   eleven full-width rows (moved here from Advanced)
+   =================================================================== */
+.setting-item.viz-tune { display: flex !important; flex-direction: column !important; align-items: stretch !important; gap: 10px !important; }
+.viz-tune-block {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 4%, transparent);
+}
+.viz-tune-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; min-height: 28px; }
+.viz-tune-label {
+  font-size: calc(11.5px * var(--font-scale, 1));
+  font-weight: 700;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  color: var(--md-sys-color-primary);
+}
+.viz-tune-seg .theme-mode-btn { padding: 4px 12px !important; min-height: 28px; font-size: calc(12.5px * var(--font-scale, 1)) !important; }
+.viz-tune-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 18px; }
+.viz-cell { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.viz-cell-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: calc(12.5px * var(--font-scale, 1));
+  color: var(--md-sys-color-on-surface-variant);
+}
+.viz-cell-top .setting-val { font-weight: 600; font-size: calc(12.5px * var(--font-scale, 1)) !important; color: var(--md-sys-color-on-surface); min-width: 0 !important; }
+.viz-cell .pill-range { width: 100% !important; margin: 0 !important; }
+.viz-tune-switches { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 18px; }
+.viz-switch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+  font-size: calc(13px * var(--font-scale, 1));
+  color: var(--md-sys-color-on-surface);
+}
+.viz-switch > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.viz-switch .effect-switch-btn { flex-shrink: 0; }
+@media (max-width: 1100px) { .viz-tune-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 760px) { .viz-tune-grid, .viz-tune-switches { grid-template-columns: 1fr; } }
+
+/* ===================================================================
+   Collapsed sidebar: keep the active button's glow inside the rounded
+   panel (it was clipped at the bottom-left corner on Settings)
+   =================================================================== */
+body:not(.classic-sidebar):not(.mini) .sidebar.rail-collapsed { padding-bottom: 26px !important; }
+.sidebar.rail-collapsed .nav-item.active .nav-indicator {
+  box-shadow: 0 0 8px color-mix(in srgb, var(--moodex-blue) 55%, transparent),
+              0 0 14px color-mix(in srgb, var(--moodex-cyan) 26%, transparent) !important;
+}
