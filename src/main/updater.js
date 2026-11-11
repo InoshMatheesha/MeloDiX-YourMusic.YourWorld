@@ -2,7 +2,7 @@ const { app, ipcMain } = require('electron');
 const fs = require('fs');
 const path = require('path');
 
-const CHECK_DELAY_MS = 1500;
+const CHECK_DELAY_MS = 8000;
 const CHECK_EVERY_MS = 6 * 60 * 60 * 1000;
 
 function readIgnored(file) {
@@ -86,6 +86,11 @@ function initUpdater(getWindow) {
   const fallbackFetchGitHub = checkViaGithubApi;
 
   let autoUpdater = null;
+  let isDownloaded = false;
+  // Silent install, then start the new version straight away.
+  const installDownloaded = () => {
+    try { autoUpdater.quitAndInstall(true, true); } catch (_) {}
+  };
   const hasUpdaterSupport = !isDev || fs.existsSync(devConfigFile);
   if (hasUpdaterSupport && canInstall) {
     try {
@@ -94,8 +99,6 @@ function initUpdater(getWindow) {
       if (isDev) autoUpdater.forceDevUpdateConfig = true;
       autoUpdater.autoDownload = false;
       autoUpdater.autoInstallOnAppQuit = false;
-
-      let isDownloaded = false;
 
       autoUpdater.on('update-available', async (info) => {
         current = info;
@@ -145,7 +148,7 @@ function initUpdater(getWindow) {
       autoUpdater.on('update-downloaded', () => {
         isDownloaded = true;
         if (installNow) {
-          autoUpdater.quitAndInstall();
+          installDownloaded();
         } else {
           send('update-ready', { version: current && current.version });
           send('update-downloaded', {
@@ -158,7 +161,14 @@ function initUpdater(getWindow) {
         }
       });
 
-      autoUpdater.on('error', () => {
+      autoUpdater.on('error', (err) => {
+        if (installNow) {
+          // The user is waiting on "Update now": tell the UI so it can fall
+          // back to the release page instead of spinning forever.
+          installNow = false;
+          send('update-error', { message: err && err.message ? err.message : 'Update failed' });
+          return;
+        }
         fallbackFetchGitHub();
       });
     } catch (_) {
@@ -185,12 +195,13 @@ function initUpdater(getWindow) {
   const doInstallNow = () => {
     installNow = true;
     if (autoUpdater && canInstall) {
-      try {
-        autoUpdater.quitAndInstall();
-      } catch (_) {
-        autoUpdater.downloadUpdate().then(() => {
-          autoUpdater.quitAndInstall();
-        }).catch(() => {});
+      if (isDownloaded) {
+        installDownloaded();
+      } else {
+        // Still downloading (or not started): finish the download first; the
+        // 'update-downloaded' handler installs as soon as it lands. Calling
+        // quitAndInstall() now would only raise a "no update file" error.
+        autoUpdater.downloadUpdate().catch(() => {});
       }
     } else {
       app.relaunch();
@@ -217,8 +228,11 @@ function initUpdater(getWindow) {
     }
   });
 
-  // Auto update checks disabled by default: set MOODEX_ENABLE_UPDATES=1 once a release feed exists
-  if (process.env.MOODEX_ENABLE_UPDATES === '1') {
+  // Quiet background checks: shortly after start-up and every few hours. A
+  // found update is downloaded in the background and shown as a small
+  // "Update available" pill on Home; nothing pops up unless the user asks.
+  // MOODEX_DISABLE_UPDATES=1 turns this off (e.g. for development).
+  if (process.env.MOODEX_DISABLE_UPDATES !== '1' && !isDev) {
     setTimeout(check, CHECK_DELAY_MS);
     setInterval(check, CHECK_EVERY_MS).unref();
   }

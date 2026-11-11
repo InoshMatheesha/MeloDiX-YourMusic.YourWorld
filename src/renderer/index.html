@@ -324,6 +324,13 @@
           <div class="home-ambient-layer"></div>
         </div>
         <div class="discover-content" id="discover-empty">
+          <div class="home-update-row">
+            <button type="button" class="home-update-pill" id="home-update-pill" hidden>
+              <span class="home-update-pill-dot" aria-hidden="true"></span>
+              <svg class="home-update-pill-ico" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><polyline points="7 10 12 15 17 10"/><path d="M5 21h14"/></svg>
+              <span class="home-update-pill-text" data-i18n>Update available</span>
+            </button>
+          </div>
           <div id="discover-home" style="display: contents;">
 
             <div class="home-hero" id="home-hero">
@@ -4620,7 +4627,7 @@
         <span class="ota-update-version" id="update-version-badge">v1.1</span>
         <div class="ota-update-actions">
           <button class="ota-btn-update" id="btn-update-now" type="button" data-i18n>Update</button>
-          <button class="ota-btn-ignore" id="btn-update-later" type="button" data-i18n>Ignore</button>
+          <button class="ota-btn-ignore" id="btn-update-later" type="button" title="Install when you close Melodix" data-i18n>Later</button>
         </div>
       </div>
       <div class="ota-update-body" id="update-body-grid">

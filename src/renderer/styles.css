@@ -12031,3 +12031,51 @@ body:not(.classic-sidebar):not(.mini) .sidebar.rail-collapsed { padding-bottom: 
   box-shadow: 0 0 8px color-mix(in srgb, var(--moodex-blue) 55%, transparent),
               0 0 14px color-mix(in srgb, var(--moodex-cyan) 26%, transparent) !important;
 }
+
+/* ===================================================================
+   Updates: the OTA sheet must actually be visible when open (it used to
+   stay visibility:hidden because .modal-backdrop needs .visible), and a
+   quiet "Update available" pill at the top right of Home.
+   =================================================================== */
+#update-modal.ota-update-backdrop:not(.hidden) {
+  visibility: visible !important;
+  pointer-events: auto !important;
+}
+
+.home-update-row { display: flex; justify-content: flex-end; padding: 10px 32px 0; }
+.home-update-row:has(.home-update-pill[hidden]) { display: none; }
+.home-update-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 30px;
+  padding: 0 13px 0 11px;
+  border: 1px solid color-mix(in srgb, var(--md-sys-color-primary) 35%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--md-sys-color-primary) 12%, var(--md-sys-color-surface-container));
+  color: var(--md-sys-color-on-surface);
+  font: inherit;
+  font-size: calc(12.5px * var(--font-scale, 1));
+  font-weight: 600;
+  cursor: pointer;
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity .35s ease, transform .35s cubic-bezier(.2, 0, 0, 1), background-color .15s ease, border-color .15s ease;
+}
+.home-update-pill.is-shown { opacity: .92; transform: none; }
+.home-update-pill:hover { opacity: 1; background: color-mix(in srgb, var(--md-sys-color-primary) 20%, var(--md-sys-color-surface-container)); border-color: color-mix(in srgb, var(--md-sys-color-primary) 55%, transparent); }
+.home-update-pill-ico { color: var(--md-sys-color-primary); flex-shrink: 0; }
+.home-update-pill-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--md-sys-color-primary);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--md-sys-color-primary) 55%, transparent);
+  animation: homeUpdatePulse 2.4s ease-out infinite;
+  flex-shrink: 0;
+}
+.home-update-pill.is-ready .home-update-pill-dot { background: #6dd58c; box-shadow: 0 0 0 0 rgba(109, 213, 140, .55); }
+@keyframes homeUpdatePulse {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--md-sys-color-primary) 55%, transparent); }
+  70%, 100% { box-shadow: 0 0 0 7px transparent; }
+}
+body.perf .home-update-pill-dot, body.reduce-motion .home-update-pill-dot { animation: none; }

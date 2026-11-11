@@ -18581,6 +18581,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         .replace(/^#{1,6}\s+.*$/gm, (m) => m.replace(/^#{1,6}\s+/, ''))
         .replace(/^\s*[-*•]\s+/gm, '• ')
         .replace(/\*\*([^*]+)\*\*/g, '$1')
+        .replace(/(^|[^\w*])\*([^*\n]+)\*(?!\w)/g, '$1$2')
+        .replace(/(^|[^\w])_([^_\n]+)_(?!\w)/g, '$1$2')
         .replace(/`([^`]+)`/g, '$1')
         .replace(/\n{3,}/g, '\n\n')
         .trim();
@@ -18600,8 +18602,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (!modal || !sheet || !notesEl) return;
 
       const rawVer = String(info?.version || '').replace(/^v/i, '');
-      const ignoredVer = localStorage.getItem('moodex_ignored_update_ver') || '';
-      if (!manualUpdateCheck && rawVer && ignoredVer === rawVer) return;
 
       const displayVer = rawVer.endsWith('.0.0') ? ('v' + rawVer.slice(0, -4)) : (rawVer.endsWith('.0') ? ('v' + rawVer.slice(0, -2)) : ('v' + rawVer));
       if (verEl) verEl.textContent = displayVer || 'v1.1';
@@ -18631,7 +18631,47 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       sheet.classList.remove('leaving');
       if (spinnerBox) spinnerBox.classList.add('hidden');
+      // Every .modal-backdrop stays visibility:hidden until it also has
+      // .visible - without it the sheet "opened" but could never be seen.
       modal.classList.remove('hidden');
+      modal.classList.add('visible');
+    }
+
+    function hideOtaUpdateSheet() {
+      const sheet = document.getElementById('update-sheet-card');
+      const modal = document.getElementById('update-modal');
+      if (sheet) sheet.classList.add('leaving');
+      setTimeout(() => {
+        if (modal) {
+          modal.classList.add('hidden');
+          modal.classList.remove('visible');
+        }
+      }, 260);
+    }
+
+    // Small "Update available" pill at the top right of Home. Shown for any
+    // newer version found (background or manual check); clicking it opens
+    // the update sheet. It never pops up on its own.
+    function showUpdatePill() {
+      const pill = document.getElementById('home-update-pill');
+      if (!pill || !latestUpdateInfo || !latestUpdateInfo.version) return;
+      const ver = String(latestUpdateInfo.version).replace(/^v/i, '');
+      const label = pill.querySelector('.home-update-pill-text');
+      if (label) {
+        const txt = isUpdateDownloaded ? 'Update ready' : 'Update available';
+        label.textContent = typeof t === 'function' ? t(txt) : txt;
+      }
+      pill.title = (isUpdateDownloaded ? 'Melodix ' + ver + ' is ready to install' : 'Melodix ' + ver + ' is available') + ' - click for details';
+      pill.classList.toggle('is-ready', isUpdateDownloaded);
+      pill.hidden = false;
+      requestAnimationFrame(() => pill.classList.add('is-shown'));
+    }
+
+    const homeUpdatePill = document.getElementById('home-update-pill');
+    if (homeUpdatePill) {
+      homeUpdatePill.addEventListener('click', () => {
+        if (latestUpdateInfo) populateOtaUpdateSheet(latestUpdateInfo);
+      });
     }
 
     function restoreButton() {
@@ -18681,6 +18721,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             canInstall: false
           };
           populateOtaUpdateSheet(latestUpdateInfo);
+          showUpdatePill();
           restoreButton();
         } else {
           restoreButton();
@@ -18725,6 +18766,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     if (api && api.onUpdateAvailable) {
       api.onUpdateAvailable(async (info) => {
+        // Remember whether the user pressed "Check for updates" *before*
+        // restoreButton() clears the flag: only a manual check opens the
+        // sheet; background checks just show the Home pill.
+        const wasManual = manualUpdateCheck;
         restoreButton();
         latestUpdateInfo = { ...(info || {}) };
         canNativeInstall = !!info?.canInstall;
@@ -18747,7 +18792,8 @@ document.addEventListener('DOMContentLoaded', async () => {
           } catch (_) { }
         }
 
-        populateOtaUpdateSheet(latestUpdateInfo);
+        showUpdatePill();
+        if (wasManual) populateOtaUpdateSheet(latestUpdateInfo);
       });
     }
 
@@ -18765,10 +18811,9 @@ document.addEventListener('DOMContentLoaded', async () => {
           }
         }, 600);
       } else {
-        const modal = document.getElementById('update-modal');
-        if (modal && modal.classList.contains('hidden')) {
-          populateOtaUpdateSheet(latestUpdateInfo || info);
-        }
+        // Downloaded in the background: no pop-up, the Home pill turns into
+        // "Update ready".
+        showUpdatePill();
       }
     };
 
@@ -18795,6 +18840,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         restoreButton();
         if (isWaitingToRestart) {
           isWaitingToRestart = false;
+          const spinnerBox = document.getElementById('update-center-spinner');
+          if (spinnerBox) spinnerBox.classList.add('hidden');
+          hideOtaUpdateSheet();
+          showToast('Update could not be installed automatically - opening the download page', 'error');
           if (latestUpdateInfo?.htmlUrl) {
             window.open(latestUpdateInfo.htmlUrl, '_blank');
           } else {
@@ -18816,6 +18865,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         const label = document.getElementById('update-progress-label');
         if (fill) fill.style.width = (d?.percent || 0) + '%';
         if (label) label.textContent = (d?.percent || 0) + '%';
+        // While the user waits after "Update", show how far the download is.
+        const spinLabel = document.getElementById('update-spinner-label');
+        if (spinLabel && isWaitingToRestart) {
+          const base = typeof t === 'function' ? t('Downloading update...') : 'Downloading update...';
+          spinLabel.textContent = `${base} ${d?.percent || 0}%`;
+        }
       });
     }
 
@@ -18839,6 +18894,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         if (!canNativeInstall) {
+          // Portable / dev builds can't self-install: open the release page
+          // and close the sheet instead of leaving the spinner up.
+          if (spinnerBox) spinnerBox.classList.add('hidden');
+          hideOtaUpdateSheet();
           if (latestUpdateInfo?.htmlUrl) {
             window.open(latestUpdateInfo.htmlUrl, '_blank');
           } else {
@@ -18852,6 +18911,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         isWaitingToRestart = true;
+        const spinLabel = document.getElementById('update-spinner-label');
+        if (spinLabel) spinLabel.textContent = typeof t === 'function' ? t('Downloading update...') : 'Downloading update...';
         if (api && api.updateAction) {
           api.updateAction('now');
         }
@@ -18860,19 +18921,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const btnUpdateLater = document.getElementById('btn-update-later');
     if (btnUpdateLater) {
+      // "Later": close the sheet and install quietly the next time Melodix
+      // closes. Nothing is ignored for good - the Home pill stays as a reminder.
       btnUpdateLater.addEventListener('click', () => {
-        if (latestUpdateInfo?.version) {
-          localStorage.setItem('moodex_ignored_update_ver', String(latestUpdateInfo.version).replace(/^v/i, ''));
+        localStorage.removeItem('moodex_ignored_update_ver');
+        if (api && api.updateAction && canNativeInstall) {
+          api.updateAction('later');
         }
-        if (api && api.updateAction) {
-          api.updateAction('ignore');
-        }
-        const sheet = document.getElementById('update-sheet-card');
-        const modal = document.getElementById('update-modal');
-        if (sheet) sheet.classList.add('leaving');
-        setTimeout(() => {
-          if (modal) modal.classList.add('hidden');
-        }, 260);
+        hideOtaUpdateSheet();
       });
     }
   })();
