@@ -4457,6 +4457,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       songRadioGen++;
     }
     if (queueList) {
+      if (queueList !== state.queue) state.playNextPending = 0;
       state.queue = [...queueList];
       if (startIndex >= 0 && startIndex < state.queue.length && isSameTrack(state.queue[startIndex], track)) {
         state.queueIndex = startIndex;
@@ -7816,6 +7817,17 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
     }
 
+    // Tracks queued with "Play next" go first, even in shuffle mode.
+    if (state.playNextPending > 0 && state.queueIndex + 1 < state.queue.length) {
+      state.playNextPending--;
+      const nextIdx = state.queueIndex + 1;
+      state.queueIndex = nextIdx;
+      recordPlayedIndex(nextIdx);
+      playTrack(state.queue[nextIdx]);
+      return;
+    }
+    state.playNextPending = 0;
+
     if (state.isRadioQueue && state.queueIndex + 1 >= state.queue.length) {
       await ensureInfiniteWaveQueue(true);
       if (state.queueIndex + 1 < state.queue.length) {
@@ -9616,6 +9628,33 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
   window.addTrackToQueue = addTrackToQueue;
 
+  // Insert a track straight after the one playing. Several "Play next" picks
+  // stack in the order they were chosen, and they are honoured even when
+  // shuffle is on (see the pending check in playNext()).
+  function playTrackNext(track) {
+    if (!track) return;
+    const cloned = Object.assign({}, track);
+    if (!state.currentTrack || state.queue.length === 0) {
+      state.queue = [cloned];
+      state.queueIndex = 0;
+      state.playNextPending = 0;
+      if (el.queueCount) el.queueCount.textContent = '1';
+      playTrack(cloned, 0);
+      showToast(typeof t === 'function' ? t('Playing now') : 'Playing now', 'success');
+      return;
+    }
+    const pending = Math.max(0, Number(state.playNextPending) || 0);
+    const base = Math.max(0, Number(state.queueIndex) || 0);
+    const insertAt = Math.min(state.queue.length, base + 1 + pending);
+    state.queue.splice(insertAt, 0, cloned);
+    state.playNextPending = pending + 1;
+    if (el.queueCount) el.queueCount.textContent = String(state.queue.length);
+    if (typeof updateQueueBadge === 'function') updateQueueBadge();
+    if (state.currentView === 'queue' && typeof renderQueueView === 'function') renderQueueView();
+    showToast(typeof t === 'function' ? t('Will play next') : 'Will play next', 'success');
+  }
+  window.playTrackNext = playTrackNext;
+
   function isTrackFavorited(track) {
     if (!track) return false;
     return state.favorites.some(f => (f.id && f.id === track.id) || (f.title === track.title && f.artist === track.artist));
@@ -9793,6 +9832,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         action: () => {
           if (typeof openAddToPlaylistModal === 'function') openAddToPlaylistModal(track);
         }
+      },
+      {
+        id: 'play-next',
+        label: 'Play next',
+        icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="4 5 13 12 4 19 4 5"/><line x1="17" y1="6" x2="21" y2="6"/><line x1="17" y1="12" x2="21" y2="12"/><line x1="17" y1="18" x2="21" y2="18"/></svg>',
+        action: () => playTrackNext(track)
       },
       {
         id: 'queue',
@@ -17079,15 +17124,55 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
+  // Short blurbs shown in the settings hero card for each category.
+  const SETTINGS_CAT_INFO = {
+    interface: 'Language, scale, fonts and how Melodix is laid out',
+    theme: 'Light or dark, palette style and your accent color',
+    banners: 'Artwork and animated banners behind the player',
+    tracks: 'Playback, audio quality and how tracks behave',
+    integrations: 'Discord, Last.fm, Spotify and other connections',
+    storage: 'Downloads, cache and where your music lives',
+    advanced: 'Fine-tuning for power users',
+    about: 'Version, updates and credits'
+  };
+
+  function updateSettingsHero(cat, searching) {
+    const titleEl = document.getElementById('settings-hero-title');
+    const descEl = document.getElementById('settings-hero-desc');
+    const iconEl = document.getElementById('settings-hero-icon');
+    const hero = document.getElementById('settings-hero');
+    if (!titleEl || !hero) return;
+    if (searching) {
+      titleEl.textContent = typeof t === 'function' ? t('Search results') : 'Search results';
+      if (descEl) descEl.textContent = '';
+      if (iconEl) iconEl.innerHTML = '<svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>';
+      hero.dataset.cat = 'search';
+      return;
+    }
+    const btn = document.querySelector(`#settings-nav .settings-nav-btn[data-cat="${cat}"]`);
+    const label = btn ? (btn.querySelector('span')?.textContent || cat) : cat;
+    titleEl.textContent = label.trim();
+    if (descEl) {
+      const d = SETTINGS_CAT_INFO[cat] || '';
+      descEl.textContent = d && typeof t === 'function' ? t(d) : d;
+    }
+    if (iconEl) {
+      const svg = btn ? btn.querySelector('svg') : null;
+      iconEl.innerHTML = svg ? svg.outerHTML : '';
+    }
+    hero.dataset.cat = cat;
+  }
+
   function showSettingsCategory(cat) {
-    if (cat === 'appearance' || cat === 'overview' || !cat) cat = 'home';
+    // Categories that no longer exist (old overview page, removed Plugins and
+    // Custom themes panes) fall back to the first real section.
+    if (!cat || !document.querySelector(`#view-settings .settings-section[data-cat="${cat}"]`)) cat = 'interface';
     document.querySelectorAll('#view-settings .setting-item').forEach(i => i.classList.remove('hidden'));
     document.querySelectorAll('#view-settings .settings-section').forEach(s => s.classList.toggle('cat-hidden', s.dataset.cat !== cat));
     document.querySelectorAll('#settings-nav .settings-nav-btn').forEach(b => b.classList.toggle('active', b.dataset.cat === cat));
     const pane = document.querySelector('#view-settings .settings-pane'); if (pane) pane.scrollTop = 0;
     try { localStorage.setItem('moodex_settings_cat', cat); } catch (e) { }
-    if (cat === 'custom-themes' && typeof renderThemeCards === 'function') renderThemeCards();
-    if (cat === 'plugins' && typeof reloadPluginsList === 'function') reloadPluginsList();
+    updateSettingsHero(cat, false);
     refreshStacks();
   }
   window.showSettingsCategory = showSettingsCategory;
@@ -17113,6 +17198,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const activeNavBtn = document.querySelector('#view-settings .settings-nav-btn.active');
       const activeCat = activeNavBtn ? activeNavBtn.dataset.cat : 'interface';
 
+      updateSettingsHero(activeCat, !!q);
       if (!q) {
         sections.forEach(sec => {
           sec.style.display = '';
@@ -17322,6 +17408,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   async function loadCustomThemes() {
+    // Custom .css themes were removed from Settings; keep only the user's own
+    // custom CSS (Advanced) and ignore theme files left over from older builds.
+    if (!document.getElementById('custom-themes-list')) {
+      customThemes = [];
+      applyCustomStyles();
+      return;
+    }
     if (!window.electronAPI || !window.electronAPI.listThemes) {
       applyCustomStyles();
       return;
@@ -17435,6 +17528,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
   async function loadPlugins() {
+    // Plugins were removed from Settings; with no way to see or switch them
+    // off, don't run any that were left enabled from an older version.
+    if (!document.getElementById('plugins-list')) return;
     if (!window.electronAPI || !window.electronAPI.listPlugins) return;
     pluginsCache = await window.electronAPI.listPlugins();
     pluginsCache.filter((p) => p.enabled).forEach(runPlugin);
@@ -17449,7 +17545,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     renderPluginCards();
   }
-  if (pluginsApi && pluginsApi.listPlugins) {
+  if (pluginsApi && pluginsApi.listPlugins && document.getElementById('btn-add-plugin')) {
     document.getElementById('btn-plugins-folder').addEventListener('click', () => pluginsApi.openPluginsFolder());
     document.getElementById('btn-plugins-reload').addEventListener('click', reloadPluginsList);
     document.getElementById('btn-add-plugin').addEventListener('click', async () => {
@@ -18415,7 +18511,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const originalBtnHtml = btn ? btn.innerHTML : 'Check for updates';
     let manualUpdateCheck = false;
     let checkTimeoutId = null;
-    let fallbackReleaseUrl = 'https://github.com/inoshmatheesha/moodex/releases/latest';
+    let fallbackReleaseUrl = 'https://github.com/InoshMatheesha/MeloDiX-YourMusic.YourWorld/releases/latest';
     let canNativeInstall = false;
 
     let latestUpdateInfo = null;
@@ -18537,13 +18633,13 @@ document.addEventListener('DOMContentLoaded', async () => {
           showToast('Could not check for updates', 'error');
           return;
         }
-        const res = await fetch('https://api.github.com/repos/inoshmatheesha/moodex/releases/latest', {
+        const res = await fetch('https://api.github.com/repos/InoshMatheesha/MeloDiX-YourMusic.YourWorld/releases/latest', {
           headers: { 'User-Agent': 'Moodex-Player' }
         });
         if (!res.ok) throw new Error('HTTP ' + res.status);
         const json = await res.json();
         const latestVersion = (json.tag_name || '').replace(/^v/i, '');
-        fallbackReleaseUrl = json.html_url || 'https://github.com/inoshmatheesha/moodex/releases/latest';
+        fallbackReleaseUrl = json.html_url || 'https://github.com/InoshMatheesha/MeloDiX-YourMusic.YourWorld/releases/latest';
         if (isNewerVersion(latestVersion, currentAppVersion)) {
           latestUpdateInfo = {
             version: latestVersion,
@@ -18606,7 +18702,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         if (!hasImg || !hasPublishedAt) {
           try {
-            const res = await fetch('https://api.github.com/repos/inoshmatheesha/moodex/releases/latest', {
+            const res = await fetch('https://api.github.com/repos/InoshMatheesha/MeloDiX-YourMusic.YourWorld/releases/latest', {
               headers: { 'User-Agent': 'Moodex-Player' }
             });
             if (res.ok) {
@@ -24003,9 +24099,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     return covers;
   }
 
-  function spCard({ cover, gridCovers, title, sub, onClick, isExplicit = false }) {
+  function spCard({ cover, gridCovers, title, sub, onClick, isExplicit = false, track = null }) {
     const card = document.createElement('div');
     card.className = 'sp-card';
+    if (track) {
+      // Right-click a track card for the same menu as a track row
+      // (Play next, Add to queue, Favorite, ...).
+      card.addEventListener('contextmenu', (e) => openTrackContextMenu(e, track, {}));
+    }
 
     const coverWrap = document.createElement('div');
     coverWrap.className = 'sp-card-cover';
@@ -24034,6 +24135,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         img.addEventListener('error', () => { img.remove(); coverWrap.classList.add('sp-cover-fallback'); });
       }
       coverWrap.appendChild(img);
+    }
+
+    if (typeof onClick === 'function') {
+      const playBadge = document.createElement('span');
+      playBadge.className = 'sp-card-play';
+      playBadge.setAttribute('aria-hidden', 'true');
+      playBadge.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.4-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z"/></svg>';
+      coverWrap.appendChild(playBadge);
     }
 
     const titleEl = document.createElement('div');
@@ -24117,6 +24226,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         title: track.title || 'Untitled',
         sub: track.artist || track.uploader || 'Unknown artist',
         isExplicit: isTrackExplicit(track),
+        track,
         onClick: () => {
           // Song radio seeded by this trending track: Next plays more in the
           // same style and the queue refills itself, instead of a fixed list.
@@ -24480,6 +24590,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   function renderSpotifyHome() {
+    initHomeRowArrows();
     renderQuickAccess();
     renderTrending();
     renderMadeForYou();
@@ -24487,6 +24598,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     renderTopArtistsHome();
     renderPlayedAlbumsHome();
     renderSimilarArtistsHome();
+    renderOnRepeat();
+    renderBecauseYouListened();
+    renderNewReleases();
+    renderDiscoveryShelves();
   }
 
   // ---------------------------------------------------------------------
@@ -24622,6 +24737,293 @@ document.addEventListener('DOMContentLoaded', async () => {
         el.searchInput.dispatchEvent(new Event('input', { bubbles: true }));
         el.searchInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
       });
+    });
+  }
+
+  // ---------------------------------------------------------------------
+  // Extra home shelves
+  //
+  // Personal rows ("Because you listened to", "On repeat") come from the
+  // user's own history; discovery rows (new releases, regional charts and
+  // genre shelves) come from /api/home-shelf. Every row caches its last good
+  // result so the home page fills instantly and only refreshes in the
+  // background, and a row with too little to show stays hidden.
+  // ---------------------------------------------------------------------
+  const HOME_SHELF_CACHE_KEY = 'moodex_home_shelves_v1';
+  const HOME_SHELF_TTL_MS = 3 * 3600 * 1000;
+
+  const DISCOVERY_SHELVES = [
+    { id: 'sp-shelf-india', kind: 'songs', region: 'in' },
+    { id: 'sp-shelf-tamil', kind: 'search', q: 'tamil hit songs' },
+    { id: 'sp-shelf-fresh', kind: 'search', q: () => `new sinhala songs ${new Date().getFullYear()}` },
+    { id: 'sp-shelf-global', kind: 'songs', region: 'us' },
+    { id: 'sp-shelf-bollywood', kind: 'search', q: 'bollywood romantic songs' },
+    { id: 'sp-shelf-chill', kind: 'search', q: 'lofi chill songs' },
+    { id: 'sp-shelf-ghazal', kind: 'search', q: 'ghazal sufi songs' }
+  ];
+
+  function loadShelfCache() {
+    const all = safeJson(HOME_SHELF_CACHE_KEY, {});
+    return (all && typeof all === 'object' && !Array.isArray(all)) ? all : {};
+  }
+
+  function saveShelfCache(id, payload) {
+    try {
+      const all = loadShelfCache();
+      all[id] = Object.assign({ ts: Date.now() }, payload);
+      localStorage.setItem(HOME_SHELF_CACHE_KEY, JSON.stringify(all));
+    } catch (_) { }
+  }
+
+  function shelfTrackThumb(t) {
+    return (typeof getTrackThumbUrl === 'function' ? getTrackThumbUrl(t) : '') || t.thumbnail || t.cover || '';
+  }
+
+  // Plays a shelf as a fixed list (used for "On repeat").
+  function playShelfList(list, idx) {
+    const track = list[idx];
+    if (!track) return;
+    state.myWaveActive = false;
+    state.songRadioActive = false;
+    playTrack(track, list, idx, 'playlist');
+  }
+
+  function renderTrackShelf(secId, rowId, tracks, mode = 'radio') {
+    const sec = document.getElementById(secId);
+    const row = document.getElementById(rowId);
+    if (!sec || !row) return false;
+    const list = (tracks || []).filter(t => t && t.title && !isTrackBlocked(t) && !isArtistBlocked(t.artist));
+    if (list.length < 3) {
+      sec.hidden = true;
+      row._shelfSig = '';
+      return false;
+    }
+    sec.hidden = false;
+    const sig = mode + '|' + list.map(t => t.id || `${t.title}|${t.artist}`).join(',');
+    if (row._shelfSig === sig && row.childElementCount) return true; // unchanged
+    row._shelfSig = sig;
+    row.innerHTML = '';
+    const frag = document.createDocumentFragment();
+    list.forEach((track, i) => {
+      frag.appendChild(spCard({
+        cover: shelfTrackThumb(track),
+        title: track.title || 'Untitled',
+        sub: track.artist || track.uploader || 'Unknown artist',
+        isExplicit: isTrackExplicit(track),
+        track,
+        onClick: () => (mode === 'list' ? playShelfList(list, i) : startSongRadio(track))
+      }));
+    });
+    row.appendChild(frag);
+    row.scrollLeft = 0;
+    bindHorizontalWheel(row);
+    requestAnimationFrame(() => updateRowFade(row));
+    return true;
+  }
+
+  function renderAlbumShelf(secId, rowId, albums) {
+    const sec = document.getElementById(secId);
+    const row = document.getElementById(rowId);
+    if (!sec || !row) return false;
+    const list = (albums || []).filter(a => a && a.id && a.title && !isArtistBlocked(a.artist));
+    if (list.length < 3) {
+      sec.hidden = true;
+      row._shelfSig = '';
+      return false;
+    }
+    sec.hidden = false;
+    const sig = list.map(a => a.id).join(',');
+    if (row._shelfSig === sig && row.childElementCount) return true; // unchanged
+    row._shelfSig = sig;
+    row.innerHTML = '';
+    const frag = document.createDocumentFragment();
+    list.forEach(a => {
+      const kindLabel = (a.trackCount && a.trackCount <= 3) ? 'Single' : 'Album';
+      frag.appendChild(spCard({
+        cover: a.cover ? proxiedThumb(a.cover) : '',
+        title: a.title,
+        sub: a.artist ? `${kindLabel} by ${a.artist}` : kindLabel,
+        onClick: () => openAlbum({
+          id: a.id,
+          title: a.title,
+          artist: a.artist,
+          cover: a.cover,
+          trackCount: a.trackCount || 0,
+          year: (a.releaseDate || '').slice(0, 4),
+          type: kindLabel
+        })
+      }));
+    });
+    row.appendChild(frag);
+    row.scrollLeft = 0;
+    bindHorizontalWheel(row);
+    requestAnimationFrame(() => updateRowFade(row));
+    return true;
+  }
+
+  // "Because you listened to <last track>": a song radio seeded by the most
+  // recent play, refreshed when the seed changes or the cache goes stale.
+  let becauseShelfGen = 0;
+  async function renderBecauseYouListened() {
+    const sec = document.getElementById('sp-because-sec');
+    const seedEl = document.getElementById('sp-because-seed');
+    if (!sec) return;
+    if (!getAdv('my_wave', true)) { sec.hidden = true; return; }
+
+    const seed = (state.history || []).find(t => t && t.title && t.platform !== 'local' && !isTrackBlocked(t) && !isArtistBlocked(t.artist));
+    if (!seed) { sec.hidden = true; return; }
+    const seedKey = `${seed.id || ''}|${(seed.title || '').toLowerCase()}|${(seed.artist || '').toLowerCase()}`;
+    if (seedEl) seedEl.textContent = seed.title;
+
+    const cached = loadShelfCache()['sp-because'];
+    const sameSeed = !!(cached && cached.seedKey === seedKey);
+    const cacheFresh = sameSeed && Date.now() - (cached.ts || 0) < HOME_SHELF_TTL_MS;
+    if (sameSeed) renderTrackShelf('sp-because-sec', 'sp-because', cached.tracks);
+    if (cacheFresh || !state.serverPort) return;
+
+    const gen = ++becauseShelfGen;
+    try {
+      const res = await fetch(`http://127.0.0.1:${state.serverPort}/api/song-radio`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: seed.platform === 'soundcloud' ? '' : (seed.id || ''),
+          title: seed.title || '',
+          artist: seed.artist || '',
+          exclude: [seed.id].filter(Boolean).map(String),
+          queued: [],
+          limit: 18
+        })
+      });
+      const data = await res.json().catch(() => null);
+      if (gen !== becauseShelfGen) return;
+      const tracks = (data && Array.isArray(data.tracks)) ? data.tracks.filter(t => t && t.title && (t.id || t.url)) : [];
+      if (tracks.length >= 3) {
+        saveShelfCache('sp-because', { seedKey, tracks });
+        renderTrackShelf('sp-because-sec', 'sp-because', tracks);
+      } else if (!sameSeed) {
+        sec.hidden = true;
+      }
+    } catch (_) {
+      if (gen === becauseShelfGen && !sameSeed) sec.hidden = true;
+    }
+  }
+
+  // "On repeat": the tracks played most, matched back to full track objects
+  // from history/favorites so they keep their ids and stream URLs.
+  function renderOnRepeat() {
+    const sec = document.getElementById('sp-repeat-sec');
+    if (!sec) return;
+    let stats = {};
+    try { stats = loadPlayStats(); } catch (_) { stats = {}; }
+    const ranked = Object.entries(stats)
+      .filter(([, rec]) => rec && (Number(rec.count) || 0) >= 2)
+      .sort((a, b) => ((b[1].count || 0) - (a[1].count || 0)) || ((b[1].lastPlayed || 0) - (a[1].lastPlayed || 0)))
+      .slice(0, 40);
+    if (!ranked.length) { sec.hidden = true; return; }
+
+    const known = new Map();
+    [...(state.history || []), ...(state.favorites || [])].forEach(t => {
+      if (!t || (!t.title && !t.artist)) return;
+      const k = playStatKey(t);
+      if (!known.has(k)) known.set(k, t);
+    });
+
+    const tracks = [];
+    for (const [key, rec] of ranked) {
+      const full = known.get(key);
+      if (!full) continue; // without the full track we can't play it reliably
+      tracks.push(Object.assign({}, full, { thumbnail: full.thumbnail || rec.thumbnail || '' }));
+      if (tracks.length >= 16) break;
+    }
+    renderTrackShelf('sp-repeat-sec', 'sp-repeat', tracks, 'list');
+  }
+
+  async function fetchHomeShelf(params) {
+    const qs = new URLSearchParams(params).toString();
+    const res = await fetch(`http://127.0.0.1:${state.serverPort}/api/home-shelf?${qs}`);
+    return res.json();
+  }
+
+  async function renderNewReleases() {
+    const sec = document.getElementById('sp-newrel-sec');
+    if (!sec) return;
+    const cached = loadShelfCache()['sp-newrel'];
+    if (cached && Array.isArray(cached.albums)) renderAlbumShelf('sp-newrel-sec', 'sp-newrel', cached.albums);
+    if ((cached && Date.now() - (cached.ts || 0) < HOME_SHELF_TTL_MS) || !state.serverPort) return;
+    try {
+      const data = await fetchHomeShelf({ kind: 'new-releases', region: 'lk,in,us' });
+      if (data && data.success && Array.isArray(data.albums) && data.albums.length) {
+        saveShelfCache('sp-newrel', { albums: data.albums });
+        renderAlbumShelf('sp-newrel-sec', 'sp-newrel', data.albums);
+      }
+    } catch (_) { }
+  }
+
+  let discoveryShelvesBusy = false;
+  async function renderDiscoveryShelves() {
+    const cache = loadShelfCache();
+    const stale = [];
+    DISCOVERY_SHELVES.forEach(def => {
+      const cached = cache[def.id];
+      if (cached && Array.isArray(cached.tracks)) renderTrackShelf(`${def.id}-sec`, def.id, cached.tracks);
+      if (!cached || Date.now() - (cached.ts || 0) >= HOME_SHELF_TTL_MS) stale.push(def);
+    });
+    if (!stale.length || discoveryShelvesBusy || !state.serverPort) return;
+    discoveryShelvesBusy = true;
+    try {
+      // One at a time: these hit outside services and are not urgent.
+      for (const def of stale) {
+        const params = { kind: def.kind };
+        if (def.region) params.region = def.region;
+        if (def.q) params.q = typeof def.q === 'function' ? def.q() : def.q;
+        try {
+          const data = await fetchHomeShelf(params);
+          if (data && data.success && Array.isArray(data.tracks) && data.tracks.length) {
+            saveShelfCache(def.id, { tracks: data.tracks });
+            renderTrackShelf(`${def.id}-sec`, def.id, data.tracks);
+          }
+        } catch (_) { }
+      }
+    } finally {
+      discoveryShelvesBusy = false;
+    }
+  }
+
+  // Prev/next arrows in each row header, like a carousel. Added once per
+  // section; their enabled state follows the row's scroll position.
+  function updateRowArrows(row) {
+    const nav = row && row._arrowNav;
+    if (!nav) return;
+    const max = row.scrollWidth - row.clientWidth;
+    nav.classList.toggle('is-static', max <= 4);
+    nav.querySelector('.sp-row-prev').disabled = row.scrollLeft <= 4;
+    nav.querySelector('.sp-row-next').disabled = row.scrollLeft >= max - 4;
+  }
+
+  function initHomeRowArrows() {
+    document.querySelectorAll('#sp-home .sp-section').forEach(sec => {
+      const h2 = sec.querySelector('h2');
+      const row = sec.querySelector('.sp-row');
+      if (!h2 || !row || row._arrowNav) return;
+      const nav = document.createElement('div');
+      nav.className = 'sp-row-nav';
+      nav.innerHTML = `
+        <button type="button" class="sp-row-arrow sp-row-prev" aria-label="Scroll left" title="Back">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+        <button type="button" class="sp-row-arrow sp-row-next" aria-label="Scroll right" title="More">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+        </button>`;
+      h2.appendChild(nav);
+      row._arrowNav = nav;
+      const step = (dir) => row.scrollBy({ left: dir * Math.max(200, row.clientWidth * 0.85), behavior: 'smooth' });
+      nav.querySelector('.sp-row-prev').addEventListener('click', (e) => { e.stopPropagation(); step(-1); });
+      nav.querySelector('.sp-row-next').addEventListener('click', (e) => { e.stopPropagation(); step(1); });
+      row.addEventListener('scroll', () => updateRowArrows(row), { passive: true });
+      new MutationObserver(() => requestAnimationFrame(() => updateRowArrows(row))).observe(row, { childList: true });
+      if (typeof ResizeObserver === 'function') new ResizeObserver(() => updateRowArrows(row)).observe(row);
+      requestAnimationFrame(() => updateRowArrows(row));
     });
   }
 
@@ -25807,7 +26209,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
-  const DEFAULT_HOME_ORDER = ['sp-made-sec', 'sp-quick-sec', 'sp-top-artists-sec', 'sp-similar-sec', 'sp-played-albums-sec', 'sp-trend-sec', 'sp-artists-sec'];
+  const DEFAULT_HOME_ORDER = ['sp-made-sec', 'sp-quick-sec', 'sp-because-sec', 'sp-top-artists-sec', 'sp-similar-sec', 'sp-repeat-sec', 'sp-played-albums-sec', 'sp-newrel-sec', 'sp-trend-sec', 'sp-shelf-india-sec', 'sp-shelf-tamil-sec', 'sp-shelf-fresh-sec', 'sp-shelf-global-sec', 'sp-shelf-bollywood-sec', 'sp-shelf-chill-sec', 'sp-shelf-ghazal-sec', 'sp-artists-sec'];
 
   const HOME_SECTION_DEFS = {
     'sp-made-sec': { name: 'For you', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 10v2M8 6v10M12 2v18M16 6v10M20 10v2"/></svg>' },
@@ -25816,7 +26218,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     'sp-artists-sec': { name: 'Favorite artists', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>' },
     'sp-top-artists-sec': { name: 'Your top artists', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>' },
     'sp-similar-sec': { name: 'Artists you might like', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l1.9 4.6 4.6 1.9-4.6 1.9L12 16l-1.9-4.6L5.5 9.5l4.6-1.9L12 3Z"/></svg>' },
-    'sp-played-albums-sec': { name: "Albums you've played", icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>' }
+    'sp-played-albums-sec': { name: "Albums you've played", icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>' },
+    'sp-because-sec': { name: 'Because you listened to…', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>' },
+    'sp-repeat-sec': { name: 'On repeat', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>' },
+    'sp-newrel-sec': { name: 'New releases', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15 8.5 22 9.3 17 14 18.2 21 12 17.8 5.8 21 7 14 2 9.3 9 8.5 12 2"/></svg>' },
+    'sp-shelf-india-sec': { name: 'Top songs in India', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>' },
+    'sp-shelf-tamil-sec': { name: 'Tamil hits', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>' },
+    'sp-shelf-fresh-sec': { name: 'Fresh Sinhala drops', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>' },
+    'sp-shelf-global-sec': { name: 'Global top songs', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>' },
+    'sp-shelf-bollywood-sec': { name: 'Bollywood romance', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>' },
+    'sp-shelf-chill-sec': { name: 'Chill & lo-fi', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>' },
+    'sp-shelf-ghazal-sec': { name: 'Ghazal & Sufi essentials', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>' }
   };
 
   function getHomeSectionsOrder() {
@@ -25826,8 +26238,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed) && parsed.length > 0) {
           const valid = parsed.filter(id => DEFAULT_HOME_ORDER.includes(id));
-          DEFAULT_HOME_ORDER.forEach(id => {
-            if (!valid.includes(id)) valid.push(id);
+          // Sections added in a newer version go next to the section that
+          // precedes them by default, not all piled up at the bottom.
+          DEFAULT_HOME_ORDER.forEach((id, defIdx) => {
+            if (valid.includes(id)) return;
+            let insertAt = 0;
+            for (let q = defIdx - 1; q >= 0; q--) {
+              const at = valid.indexOf(DEFAULT_HOME_ORDER[q]);
+              if (at >= 0) { insertAt = at + 1; break; }
+            }
+            valid.splice(insertAt, 0, id);
           });
           return valid;
         }

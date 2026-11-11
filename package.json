@@ -29,13 +29,13 @@
     "tone": "^15.1.22"
   },
   "productName": "Moodex",
-  "homepage": "https://github.com/inoshmatheesha/moodex",
+  "homepage": "https://github.com/InoshMatheesha/MeloDiX-YourMusic.YourWorld",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/inoshmatheesha/moodex.git"
+    "url": "git+https://github.com/InoshMatheesha/MeloDiX-YourMusic.YourWorld.git"
   },
   "bugs": {
-    "url": "https://github.com/inoshmatheesha/moodex/issues"
+    "url": "https://github.com/InoshMatheesha/MeloDiX-YourMusic.YourWorld/issues"
   },
   "build": {
     "appId": "io.github.inoshmatheesha.moodex",
@@ -115,7 +115,7 @@
       {
         "provider": "github",
         "owner": "InoshMatheesha",
-        "repo": "Moodex-Music-Player",
+        "repo": "MeloDiX-YourMusic.YourWorld",
         "releaseType": "release"
       }
     ],

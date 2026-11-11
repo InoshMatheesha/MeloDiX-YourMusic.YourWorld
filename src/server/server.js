@@ -2623,6 +2623,108 @@ function fetchItunesTopSongs(limit = 24, region = 'lk') {
   });
 }
 
+// Top albums from the iTunes storefront chart. Albums carry their iTunes
+// collection id, so the renderer can open them with /api/album directly.
+function fetchItunesTopAlbums(limit = 25, region = 'us') {
+  return new Promise((resolve) => {
+    const req = https.get('https://itunes.apple.com/' + region + '/rss/topalbums/limit=' + limit + '/json', {
+      headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' },
+      timeout: 6000
+    }, (res) => {
+      let body = '';
+      res.on('data', chunk => { body += chunk; });
+      res.on('end', () => {
+        try {
+          const json = JSON.parse(body);
+          const entries = Array.isArray(json?.feed?.entry) ? json.feed.entry : [];
+          resolve(entries.map(e => {
+            const imgs = Array.isArray(e['im:image']) ? e['im:image'] : [];
+            const rawImg = imgs.length ? (imgs[imgs.length - 1].label || '') : '';
+            const cover = rawImg.replace(/\/\d+x\d+bb\./i, '/600x600bb.');
+            return {
+              id: String(e?.id?.attributes?.['im:id'] || ''),
+              title: e?.['im:name']?.label || '',
+              artist: e?.['im:artist']?.label || '',
+              cover,
+              trackCount: Number(e?.['im:itemCount']?.label) || 0,
+              releaseDate: e?.['im:releaseDate']?.label || '',
+              type: 'Album'
+            };
+          }).filter(a => a.id && a.title));
+        } catch (_) { resolve([]); }
+      });
+    });
+    req.on('error', () => resolve([]));
+    req.on('timeout', () => { req.destroy(); resolve([]); });
+  });
+}
+
+// Home page shelves: regional song charts, album charts / new releases and
+// search-backed genre shelves. Cached for a few hours per shelf.
+const homeShelfCache = new Map();
+const HOME_SHELF_TTL = 3 * 3600 * 1000;
+const HOME_SHELF_REGIONS = new Set(['lk', 'in', 'us', 'gb', 'ae', 'au', 'ca', 'kr', 'jp', 'br', 'fr', 'de']);
+
+async function handleHomeShelf(req, res, parsedUrl) {
+  const kind = String(parsedUrl.query.kind || 'songs');
+  const region = String(parsedUrl.query.region || 'us').toLowerCase();
+  const q = String(parsedUrl.query.q || '').trim().slice(0, 120);
+  const send = (body) => {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(body));
+  };
+  const key = `${kind}|${region}|${q.toLowerCase()}`;
+  const hit = homeShelfCache.get(key);
+  if (hit && Date.now() - hit.ts < HOME_SHELF_TTL) return send(hit.body);
+
+  let body = { success: false, tracks: [], albums: [] };
+  try {
+    if (kind === 'songs') {
+      if (!HOME_SHELF_REGIONS.has(region)) return send(body);
+      const tracks = await fetchItunesTopSongs(25, region);
+      body = { success: tracks.length > 0, tracks, albums: [] };
+    } else if (kind === 'albums' || kind === 'new-releases') {
+      const regions = String(region).split(',').map(r => r.trim()).filter(r => HOME_SHELF_REGIONS.has(r)).slice(0, 4);
+      const lists = await Promise.all(regions.map(r => fetchItunesTopAlbums(40, r)));
+      const seen = new Set();
+      let albums = [];
+      // Interleave regions so one storefront doesn't fill the whole shelf.
+      for (let i = 0; i < 40; i++) {
+        for (const list of lists) {
+          const a = list[i];
+          if (!a) continue;
+          const k = (a.title + '|' + a.artist).toLowerCase();
+          if (seen.has(k)) continue;
+          seen.add(k);
+          albums.push(a);
+        }
+      }
+      if (kind === 'new-releases') {
+        const cutoff = Date.now() - 120 * 24 * 3600 * 1000;
+        const fresh = albums
+          .filter(a => { const t = Date.parse(a.releaseDate); return t && t >= cutoff; })
+          .sort((a, b) => Date.parse(b.releaseDate) - Date.parse(a.releaseDate));
+        // Never pass old catalog albums off as "new": if a storefront
+        // failed and too few recent ones came back, report failure so the
+        // client keeps its cache / retries later instead.
+        albums = fresh.length >= 6 ? fresh : [];
+      }
+      albums = albums.slice(0, 24);
+      body = { success: albums.length > 0, tracks: [], albums };
+    } else if (kind === 'search' && q) {
+      const found = await ytmusicSearch(q);
+      const tracks = (Array.isArray(found) ? found : []).slice(0, 20);
+      body = { success: tracks.length > 0, tracks, albums: [] };
+    }
+  } catch (_) { }
+
+  if (body.success) {
+    homeShelfCache.set(key, { ts: Date.now(), body });
+    if (homeShelfCache.size > 40) homeShelfCache.delete(homeShelfCache.keys().next().value);
+  }
+  send(body);
+}
+
 async function handleTrending(req, res) {
   if (serverTrendingCache.tracks.length > 0 && Date.now() - serverTrendingCache.ts < 2 * 3600 * 1000) {
     res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -8021,6 +8123,10 @@ const server = http.createServer(async (req, res) => {
 
   if (parsedUrl.pathname === '/api/trending') {
     return handleTrending(req, res);
+  }
+
+  if (parsedUrl.pathname === '/api/home-shelf') {
+    return handleHomeShelf(req, res, parsedUrl);
   }
 
   // Artists similar to the ones the user actually listens to. Seeded with the

@@ -31,7 +31,7 @@ function initUpdater(getWindow) {
   if (pkg.version) {
     app.setVersion(pkg.version);
   }
-  const releasesUrl = `${pkg.homepage || 'https://github.com/inoshmatheesha/moodex'}/releases`;
+  const releasesUrl = `${pkg.homepage || 'https://github.com/InoshMatheesha/MeloDiX-YourMusic.YourWorld'}/releases`;
   let manualCheck = false;
   let installNow = false;
   let current = null;
@@ -50,7 +50,7 @@ function initUpdater(getWindow) {
 
   const checkViaGithubApi = async () => {
     try {
-      const res = await fetch('https://api.github.com/repos/inoshmatheesha/moodex/releases/latest', {
+      const res = await fetch('https://api.github.com/repos/InoshMatheesha/MeloDiX-YourMusic.YourWorld/releases/latest', {
         headers: { 'User-Agent': 'Moodex-Player' }
       });
       if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -108,7 +108,7 @@ function initUpdater(getWindow) {
         let htmlUrl = `${releasesUrl}/tag/v${info.version}`;
 
         try {
-          const res = await fetch('https://api.github.com/repos/inoshmatheesha/moodex/releases/latest', {
+          const res = await fetch('https://api.github.com/repos/InoshMatheesha/MeloDiX-YourMusic.YourWorld/releases/latest', {
             headers: { 'User-Agent': 'Moodex-Player' }
           });
           if (res.ok) {
