@@ -1,0 +1,725 @@
+/*
+ * Melodix web layer: overrides for the browser build (loaded after
+ * styles.css). html.is-web:not(#_):not(#__) is set by shim.js; is-ios / is-android / is-touch /
+ * is-standalone narrow things down per device.
+ *
+ *  1. Desktop-only features hidden
+ *  2. Browser chrome (no custom title bar)
+ *  3. Touch devices
+ *  4. Phone layout: top search, bottom tab bar, mini player, Now Playing sheet
+ *
+ * styles.css uses long selectors such as
+ * body:not(.classic-sidebar):not(.mini) .app-layout > .sidebar, so every rule
+ * here carries :not(#_):not(#__) (always true, double ID weight; some app rules use an ID) to win on specificity.
+ */
+
+/* ---------------------------------------------------------------------------
+ * 1. Desktop-only features
+ * ------------------------------------------------------------------------- */
+html.is-web:not(#_):not(#__) .titlebar-controls .win-btn:not(#btn-mini-lyrics),
+html.is-web:not(#_):not(#__) #btn-mini-player,
+html.is-web:not(#_):not(#__) #btn-mini-lyrics,
+html.is-web:not(#_):not(#__) #nav-downloads,
+html.is-web:not(#_):not(#__) #btn-playbar-more,
+html.is-web:not(#_):not(#__) #btn-download-playlist,
+html.is-web:not(#_):not(#__) #home-update-pill,
+html.is-web:not(#_):not(#__) #card-discord-rpc,
+html.is-web:not(#_):not(#__) #card-discord-artist-status,
+html.is-web:not(#_):not(#__) #setting-desktop-shortcut,
+html.is-web:not(#_):not(#__) #setting-proxy-manager,
+html.is-web:not(#_):not(#__) #setting-win-media-keys,
+html.is-web:not(#_):not(#__) #setting-auto-scan,
+html.is-web:not(#_):not(#__) .setting-item:has(#btn-tray-on-close),
+html.is-web:not(#_):not(#__) .setting-item:has(#btn-multi-instance),
+html.is-web:not(#_):not(#__) .setting-item:has(#btn-change-download-folder),
+html.is-web:not(#_):not(#__) .setting-item:has(#btn-google-login),
+html.is-web:not(#_):not(#__) .mx-tracklist li:has(#btn-check-updates),
+html.is-web:not(#_):not(#__) .mx-tracklist li:has(#btn-open-logs),
+html.is-web:not(#_):not(#__) .track-row .btn-row-download,
+html.is-web:not(#_):not(#__) [data-action="download"] {
+  display: none !important;
+}
+
+/* Close button of the phone Now Playing sheet (shown only inside it). */
+.web-np-close { display: none; }
+
+/* ---------------------------------------------------------------------------
+ * 2. Browser chrome: the browser draws the window, so the title bar is only a
+ *    wordmark. Drag regions do nothing in a page.
+ * ------------------------------------------------------------------------- */
+html.is-web:not(#_):not(#__) .titlebar,
+html.is-web:not(#_):not(#__) .titlebar-drag {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+html.is-web:not(#_):not(#__) body {
+  background-color: #121214;
+  overscroll-behavior: none;
+}
+
+/* Installed as an app on desktop Chrome/Edge with the title bar overlay. */
+@media (display-mode: window-controls-overlay) {
+  html.is-web:not(#_):not(#__) .titlebar {
+    padding-left: env(titlebar-area-x, 0);
+    width: env(titlebar-area-width, 100%);
+    -webkit-app-region: drag;
+    app-region: drag;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * 3. Touch devices: no hover, bigger hit targets, no tap flash, no
+ *    accidental text selection or callouts on long-press.
+ * ------------------------------------------------------------------------- */
+html.is-touch:not(#_):not(#__) {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+html.is-touch:not(#_):not(#__) body {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+html.is-touch:not(#_):not(#__) input,
+html.is-touch:not(#_):not(#__) textarea,
+html.is-touch:not(#_):not(#__) [contenteditable="true"],
+html.is-touch:not(#_):not(#__) .lyrics-container {
+  -webkit-user-select: text;
+  user-select: text;
+}
+/* iOS zooms into inputs with a font smaller than 16px. */
+html.is-ios:not(#_):not(#__) input,
+html.is-ios:not(#_):not(#__) textarea,
+html.is-ios:not(#_):not(#__) select {
+  font-size: max(16px, 1em) !important;
+}
+/* Row actions only show on hover on desktop; on touch keep them reachable. */
+html.is-touch:not(#_):not(#__) .track-row-actions {
+  opacity: 1 !important;
+}
+html.is-touch:not(#_):not(#__) .main-content,
+html.is-touch:not(#_):not(#__) .lyrics-container,
+html.is-touch:not(#_):not(#__) .rail-drawer,
+html.is-touch:not(#_):not(#__) .settings-card {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ---------------------------------------------------------------------------
+ * 4. Phone layout
+ * ------------------------------------------------------------------------- */
+@media (max-width: 760px) {
+  html.is-web:not(#_):not(#__) {
+    --web-safe-top: env(safe-area-inset-top, 0px);
+    --web-safe-bottom: env(safe-area-inset-bottom, 0px);
+    --web-header-h: 64px;
+    --web-tab-h: 60px;
+    --web-mini-h: 64px;
+    --web-gutter: 10px;
+  }
+  html.is-web:not(#_):not(#__) body {
+    position: fixed;
+    inset: 0;
+    height: var(--web-vh, 100dvh);
+    overflow: hidden;
+  }
+
+  /* -- Header: search only ------------------------------------------------ */
+  html.is-web:not(#_):not(#__) .titlebar { display: none !important; }
+  html.is-web:not(#_):not(#__) .top-nav {
+    position: fixed !important;
+    top: 0; left: 0; right: 0;
+    height: calc(var(--web-header-h) + var(--web-safe-top)) !important;
+    padding: calc(var(--web-safe-top) + 8px) 12px 8px !important;
+    margin: 0 !important;
+    z-index: 60;
+    display: flex !important;
+    align-items: center;
+    box-sizing: border-box;
+    background: linear-gradient(to bottom, rgba(18, 18, 20, 0.96) 60%, rgba(18, 18, 20, 0));
+  }
+  html.is-web:not(#_):not(#__) .search-box-wrapper {
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+  }
+  html.is-web:not(#_):not(#__) .search-box {
+    width: 100% !important;
+    height: 46px !important;
+    box-sizing: border-box;
+  }
+  html.is-web:not(#_):not(#__) .search-box kbd,
+  html.is-web:not(#_):not(#__) .search-box .search-kbd,
+  html.is-web:not(#_):not(#__) .search-box .kbd,
+  html.is-web:not(#_):not(#__) .search-shortcut {
+    display: none !important;
+  }
+
+  /* -- Content area between header and mini player ------------------------ */
+  html.is-web:not(#_):not(#__) .app-layout {
+    position: fixed !important;
+    top: calc(var(--web-header-h) + var(--web-safe-top)) !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: calc(var(--web-tab-h) + var(--web-mini-h) + var(--web-safe-bottom) + 6px) !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    display: block !important;
+  }
+  html.is-web:not(#_):not(#__) .main-content {
+    position: absolute !important;
+    inset: 0 !important;
+    width: auto !important;
+    height: auto !important;
+    margin: 0 !important;
+    border-radius: 0 !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    overscroll-behavior: contain;
+    padding-bottom: 12px;
+    box-sizing: border-box;
+  }
+  html.is-web:not(#_):not(#__) .main-content {
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+  }
+  html.is-web:not(#_):not(#__) .main-content::-webkit-scrollbar { display: none; }
+  html.is-web:not(#_):not(#__) .main-content { scrollbar-width: none; }
+  html.is-web:not(#_):not(#__) .content-view:not(#view-discover):not(#view-settings) {
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+    box-sizing: border-box;
+  }
+  html.is-web:not(#_):not(#__) .sp-home {
+    padding-left: 14px !important;
+    padding-right: 14px !important;
+  }
+
+  /* Settings: horizontal section chips, content full width. */
+  html.is-web:not(#_):not(#__) .settings-view {
+    padding: 8px 12px 16px !important;
+    box-sizing: border-box;
+  }
+  html.is-web:not(#_):not(#__) .settings-layout {
+    gap: 12px !important;
+  }
+  html.is-web:not(#_):not(#__) .settings-nav {
+    flex: 0 0 auto !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    flex-wrap: nowrap !important;
+    align-items: center !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    padding: 6px 2px !important;
+  }
+  html.is-web:not(#_):not(#__) .settings-pane,
+  html.is-web:not(#_):not(#__) .settings-hero {
+    min-width: 0 !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    box-sizing: border-box;
+  }
+  html.is-web:not(#_):not(#__) .settings-pane * {
+    max-width: 100%;
+  }
+
+  /* -- Bottom tab bar (the sidebar) --------------------------------------- */
+  html.is-web:not(#_):not(#__) .sidebar {
+    position: fixed !important;
+    left: 0 !important;
+    right: 0 !important;
+    top: auto !important;
+    bottom: 0 !important;
+    width: auto !important;
+    height: calc(var(--web-tab-h) + var(--web-safe-bottom)) !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 4px var(--web-safe-bottom) !important;
+    border-radius: 0 !important;
+    box-sizing: border-box;
+    display: block !important;
+    z-index: 70;
+    background: rgba(14, 14, 16, 0.97) !important;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    -webkit-backdrop-filter: blur(20px);
+    backdrop-filter: blur(20px);
+    transform: none !important;
+  }
+  html.is-web:not(#_):not(#__) .sidebar-rail-toggle,
+  html.is-web:not(#_):not(#__) .sidebar-brand,
+  html.is-web:not(#_):not(#__) .rail-divider,
+  html.is-web:not(#_):not(#__) .sidebar-bottom-spacer,
+  html.is-web:not(#_):not(#__) .nav-active-indicator,
+  html.is-web:not(#_):not(#__) #nav-albums,
+  html.is-web:not(#_):not(#__) #nav-wrapped,
+  html.is-web:not(#_):not(#__) #btn-toggle-presets-drawer {
+    display: none !important;
+  }
+  html.is-web:not(#_):not(#__) .sidebar-nav {
+    position: static !important;
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: stretch !important;
+    justify-content: space-around !important;
+    gap: 0 !important;
+    width: 100% !important;
+    height: var(--web-tab-h) !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+  }
+  html.is-web:not(#_):not(#__) .rail-action-group {
+    display: contents !important;
+  }
+  html.is-web:not(#_):not(#__) .sidebar-nav .nav-item,
+  html.is-web:not(#_):not(#__) .sidebar-nav .rail-icon-btn {
+    flex: 1 1 0 !important;
+    min-width: 0 !important;
+    width: auto !important;
+    height: var(--web-tab-h) !important;
+    margin: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+    padding: 8px 0 4px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    gap: 3px !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    color: var(--md-sys-color-on-surface-variant) !important;
+    font-size: 11px !important;
+    font-weight: 500 !important;
+    line-height: 1.1 !important;
+    transform: none !important;
+    order: 0;
+  }
+  html.is-web:not(#_):not(#__) #nav-settings { order: 10; }
+  html.is-web:not(#_):not(#__) .sidebar-nav .nav-item.nav-collapsed { display: none !important; }
+  html.is-web:not(#_):not(#__) .sidebar-nav .nav-item .nav-indicator {
+    flex: 0 0 auto !important;
+    width: 56px !important;
+    height: 30px !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border-radius: 15px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    transition: background-color 0.2s ease;
+  }
+  html.is-web:not(#_):not(#__) .sidebar-nav .nav-item.active .nav-indicator {
+    background: color-mix(in srgb, var(--md-sys-color-primary) 26%, transparent) !important;
+  }
+  html.is-web:not(#_):not(#__) .sidebar-nav .nav-item.active {
+    color: var(--md-sys-color-on-surface) !important;
+  }
+  html.is-web:not(#_):not(#__) .sidebar-nav .nav-item svg,
+  html.is-web:not(#_):not(#__) .sidebar-nav .rail-icon-btn svg {
+    width: 22px !important;
+    height: 22px !important;
+  }
+  html.is-web:not(#_):not(#__) .sidebar-nav .nav-label {
+    flex: 0 0 auto !important;
+    display: block !important;
+    position: static !important;
+    opacity: 1 !important;
+    width: auto !important;
+    max-width: 100% !important;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 11px !important;
+    line-height: 1.25 !important;
+    height: auto !important;
+    max-height: none !important;
+    clip-path: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    transform: none !important;
+  }
+  html.is-web:not(#_):not(#__) .sidebar-nav .nav-home-app-icon { display: none !important; }
+  html.is-web:not(#_):not(#__) .sidebar-nav .nav-home-glyph {
+    display: block !important;
+    opacity: 1 !important;
+    position: static !important;
+    transform: none !important;
+  }
+  html.is-web:not(#_):not(#__) .sidebar-nav .rail-icon-btn {
+    border: none !important;
+  }
+  html.is-web:not(#_):not(#__) .sidebar-nav .rail-icon-btn > svg {
+    flex: 0 0 auto !important;
+    margin: 4px 0 !important;
+  }
+  /* Badges (queue count) sit on the icon. */
+  html.is-web:not(#_):not(#__) .sidebar-nav .nav-badge,
+  html.is-web:not(#_):not(#__) .sidebar-nav .queue-badge {
+    top: 2px !important;
+    right: calc(50% - 26px) !important;
+  }
+
+  /* Playlists / presets drawer: bottom sheet. */
+  html.is-web:not(#_):not(#__) .rail-drawer {
+    position: fixed !important;
+    left: 0 !important;
+    right: 0 !important;
+    top: auto !important;
+    bottom: calc(var(--web-tab-h) + var(--web-safe-bottom)) !important;
+    width: auto !important;
+    max-width: none !important;
+    max-height: 70vh !important;
+    border-radius: 20px 20px 0 0 !important;
+    z-index: 75;
+    overflow-y: auto !important;
+    box-sizing: border-box;
+    transform: none !important;
+  }
+
+  /* -- Mini player (the playbar) ------------------------------------------ */
+  html.is-web:not(#_):not(#__) .playbar {
+    position: fixed !important;
+    left: var(--web-gutter) !important;
+    right: var(--web-gutter) !important;
+    bottom: calc(var(--web-tab-h) + var(--web-safe-bottom) + 4px) !important;
+    top: auto !important;
+    width: auto !important;
+    height: var(--web-mini-h) !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 8px 0 6px !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 4px !important;
+    border-radius: 14px !important;
+    z-index: 65;
+    box-sizing: border-box;
+    overflow: hidden !important;
+    background: color-mix(in srgb, var(--md-sys-color-surface-container-high, #2a2a2e) 92%, transparent) !important;
+    -webkit-backdrop-filter: blur(24px);
+    backdrop-filter: blur(24px);
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
+  }
+  html.is-web:not(#_):not(#__) #bottom-visualizer { display: none !important; }
+  html.is-web:not(#_):not(#__) .playbar-left {
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    width: auto !important;
+    max-width: none !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 10px !important;
+    cursor: pointer;
+  }
+  html.is-web:not(#_):not(#__) .playbar .artwork-wrapper {
+    width: 48px !important;
+    height: 48px !important;
+    min-width: 48px !important;
+    flex: 0 0 48px !important;
+    margin: 0 !important;
+  }
+  html.is-web:not(#_):not(#__) .playbar .artwork-wrapper canvas,
+  html.is-web:not(#_):not(#__) .playbar .artwork-wrapper img,
+  html.is-web:not(#_):not(#__) .playbar .artwork-wrapper > * {
+    max-width: 48px !important;
+    max-height: 48px !important;
+  }
+  html.is-web:not(#_):not(#__) .playbar .track-meta {
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    max-width: none !important;
+  }
+  html.is-web:not(#_):not(#__) .playbar .track-meta * {
+    max-width: 100% !important;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  html.is-web:not(#_):not(#__) #playbar-title { font-size: 14px !important; font-weight: 600 !important; }
+  html.is-web:not(#_):not(#__) #playbar-artist { font-size: 12.5px !important; }
+  html.is-web:not(#_):not(#__) .playbar-left > .btn-icon-pill,
+  html.is-web:not(#_):not(#__) .playbar-left > button:not(#btn-toggle-fav) {
+    display: none !important;
+  }
+  html.is-web:not(#_):not(#__) .playbar-center {
+    display: flex !important;
+    flex: 0 0 auto !important;
+    width: auto !important;
+    position: static !important;
+  }
+  html.is-web:not(#_):not(#__) .playback-controls {
+    display: flex !important;
+    align-items: center !important;
+    gap: 2px !important;
+    margin: 0 !important;
+  }
+  html.is-web:not(#_):not(#__) #btn-shuffle,
+  html.is-web:not(#_):not(#__) #btn-repeat,
+  html.is-web:not(#_):not(#__) #btn-prev {
+    display: none !important;
+  }
+  html.is-web:not(#_):not(#__) #btn-play-pause {
+    width: 44px !important;
+    height: 44px !important;
+    min-width: 44px !important;
+    margin: 0 !important;
+  }
+  html.is-web:not(#_):not(#__) #btn-next {
+    width: 40px !important;
+    height: 40px !important;
+  }
+  /* Progress as a hairline along the bottom edge of the card. */
+  html.is-web:not(#_):not(#__) .scrubber-bar-wrapper {
+    position: absolute !important;
+    left: 10px !important;
+    right: 10px !important;
+    bottom: 0 !important;
+    top: auto !important;
+    width: auto !important;
+    height: 3px !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    pointer-events: none;
+  }
+  html.is-web:not(#_):not(#__) .scrubber-bar-wrapper #time-current,
+  html.is-web:not(#_):not(#__) .scrubber-bar-wrapper #time-duration {
+    display: none !important;
+  }
+  html.is-web:not(#_):not(#__) #scrubber-track {
+    width: 100% !important;
+    height: 3px !important;
+    margin: 0 !important;
+  }
+  html.is-web:not(#_):not(#__) .playbar-right {
+    display: none !important;
+  }
+  html.is-web:not(#_):not(#__) .mini-lyrics-container { display: none !important; }
+
+  /* -- Now Playing sheet --------------------------------------------------
+   * Tapping the mini player adds body.web-np-open: the lyrics panel becomes a
+   * full-screen sheet and the playbar turns into full transport controls at
+   * its foot. */
+  html.is-web:not(#_):not(#__) body.web-np-open .right-panel {
+    display: flex !important;
+    flex-direction: column !important;
+    position: fixed !important;
+    inset: 0 !important;
+    width: auto !important;
+    height: var(--web-vh, 100dvh) !important;
+    max-width: none !important;
+    min-width: 0 !important;
+    margin: 0 !important;
+    padding: calc(var(--web-safe-top) + 52px) 20px calc(var(--web-safe-bottom) + 200px) !important;
+    border-radius: 0 !important;
+    z-index: 90 !important;
+    box-sizing: border-box;
+    overflow: hidden !important;
+    background: #121214 !important;
+    animation: webSheetUp 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  @keyframes webSheetUp {
+    from { transform: translateY(40px); opacity: 0; }
+    to { transform: none; opacity: 1; }
+  }
+  html.is-web:not(#_):not(#__) body.web-np-open .panel-resize-edge { display: none !important; }
+  html.is-web:not(#_):not(#__) body.web-np-open .right-panel-banner::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: linear-gradient(to bottom, rgba(18, 18, 20, 0.15) 0%, rgba(18, 18, 20, 0.55) 45%, rgba(18, 18, 20, 0.92) 75%, #121214 100%);
+  }
+  html.is-web:not(#_):not(#__) body.web-np-open .right-panel-banner {
+    position: absolute !important;
+    inset: 0 !important;
+    height: auto !important;
+  }
+  html.is-web:not(#_):not(#__) body.web-np-open .right-panel-header {
+    position: absolute !important;
+    top: calc(var(--web-safe-top) + 6px) !important;
+    right: 12px !important;
+    left: auto !important;
+    z-index: 2;
+  }
+  html.is-web:not(#_):not(#__) body.web-np-open #btn-close-right-panel { display: none !important; }
+  html.is-web:not(#_):not(#__) body.web-np-open .web-np-close {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: fixed;
+    top: calc(var(--web-safe-top) + 6px);
+    left: 10px;
+    width: 44px;
+    height: 44px;
+    border: none;
+    border-radius: 22px;
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--md-sys-color-on-surface, #fff);
+    z-index: 96;
+  }
+  html.is-web:not(#_):not(#__) body.web-np-open .right-panel-artwork-box {
+    flex: 0 0 auto !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    width: 100% !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  html.is-web:not(#_):not(#__) body.web-np-open .cover-container {
+    width: min(78vw, 42vh) !important;
+    height: min(78vw, 42vh) !important;
+    max-width: none !important;
+    margin: 0 auto !important;
+  }
+  html.is-web:not(#_):not(#__) body.web-np-open .right-panel-meta {
+    width: 100% !important;
+    text-align: center;
+    margin-top: 14px !important;
+  }
+  html.is-web:not(#_):not(#__) body.web-np-open .right-panel-title { font-size: 20px !important; }
+  html.is-web:not(#_):not(#__) body.web-np-open .lyrics-section {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    margin-top: 12px !important;
+    overflow: hidden !important;
+  }
+  html.is-web:not(#_):not(#__) body.web-np-open .lyrics-container {
+    height: 100% !important;
+    max-height: none !important;
+    overflow-y: auto !important;
+  }
+  /* While the sheet is open the playbar is its control deck. */
+  html.is-web:not(#_):not(#__) body.web-np-open .playbar {
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    height: calc(190px + var(--web-safe-bottom)) !important;
+    padding: 18px 20px calc(var(--web-safe-bottom) + 10px) !important;
+    border-radius: 0 !important;
+    z-index: 95 !important;
+    display: grid !important;
+    grid-template-columns: 1fr auto;
+    grid-template-rows: auto auto auto;
+    align-items: center !important;
+    row-gap: 6px;
+    background: transparent !important;
+    box-shadow: none !important;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+  html.is-web:not(#_):not(#__) body.web-np-open .playbar-left {
+    grid-column: 1 / -1;
+    grid-row: 1;
+  }
+  html.is-web:not(#_):not(#__) body.web-np-open .playbar .artwork-wrapper,
+  html.is-web:not(#_):not(#__) body.web-np-open .playbar .track-meta {
+    visibility: hidden;
+  }
+  html.is-web:not(#_):not(#__) body.web-np-open .playbar-left #btn-toggle-fav {
+    display: inline-flex !important;
+    position: absolute;
+    right: 20px;
+    top: 10px;
+  }
+  html.is-web:not(#_):not(#__) body.web-np-open .playbar-left #btn-playbar-share {
+    display: inline-flex !important;
+    position: absolute;
+    left: 20px;
+    top: 10px;
+  }
+  html.is-web:not(#_):not(#__) body.web-np-open .playbar-center {
+    grid-column: 1 / -1;
+    grid-row: 2 / span 2;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 14px !important;
+    width: 100% !important;
+  }
+  /* The scrubber lives inside .playbar-center after the buttons: lift it. */
+  html.is-web:not(#_):not(#__) body.web-np-open .scrubber-bar-wrapper {
+    position: static !important;
+    order: -1;
+    display: flex !important;
+    align-items: center !important;
+    gap: 10px !important;
+    width: 100% !important;
+    height: 24px !important;
+    pointer-events: auto;
+  }
+  html.is-web:not(#_):not(#__) body.web-np-open .scrubber-bar-wrapper #time-current,
+  html.is-web:not(#_):not(#__) body.web-np-open .scrubber-bar-wrapper #time-duration {
+    display: block !important;
+    opacity: 1 !important;
+    font-size: 12px !important;
+    min-width: 38px;
+    font-variant-numeric: tabular-nums;
+  }
+  html.is-web:not(#_):not(#__) body.web-np-open .scrubber-bar-wrapper #time-duration { text-align: right; }
+  html.is-web:not(#_):not(#__) body.web-np-open #scrubber-track {
+    flex: 1 1 auto !important;
+    width: auto !important;
+    height: 6px !important;
+    border-radius: 3px;
+  }
+  html.is-web:not(#_):not(#__) body.web-np-open .playback-controls {
+    width: 100%;
+    justify-content: space-between !important;
+    gap: 8px !important;
+  }
+  html.is-web:not(#_):not(#__) body.web-np-open #btn-shuffle,
+  html.is-web:not(#_):not(#__) body.web-np-open #btn-repeat,
+  html.is-web:not(#_):not(#__) body.web-np-open #btn-prev {
+    display: inline-flex !important;
+  }
+  html.is-web:not(#_):not(#__) body.web-np-open #btn-play-pause {
+    width: 72px !important;
+    height: 72px !important;
+    min-width: 72px !important;
+  }
+  html.is-web:not(#_):not(#__) body.web-np-open #btn-prev,
+  html.is-web:not(#_):not(#__) body.web-np-open #btn-next {
+    width: 52px !important;
+    height: 52px !important;
+  }
+  html.is-web:not(#_):not(#__) body.web-np-open .sidebar,
+  html.is-web:not(#_):not(#__) body.web-np-open .top-nav {
+    visibility: hidden;
+  }
+
+  /* -- Dialogs and sheets fit the screen ---------------------------------- */
+  html.is-web:not(#_):not(#__) .modal-backdrop .settings-card,
+  html.is-web:not(#_):not(#__) .modal-backdrop .dialog-card {
+    width: calc(100vw - 20px) !important;
+    max-width: calc(100vw - 20px) !important;
+    max-height: calc(var(--web-vh, 100dvh) - 40px - var(--web-safe-top) - var(--web-safe-bottom)) !important;
+    overflow-y: auto !important;
+    box-sizing: border-box;
+  }
+  html.is-web:not(#_):not(#__) .context-menu,
+  html.is-web:not(#_):not(#__) .ctx-menu {
+    max-width: calc(100vw - 16px) !important;
+  }
+  html.is-web:not(#_):not(#__) .toast-container,
+  html.is-web:not(#_):not(#__) #toast-container {
+    bottom: calc(var(--web-tab-h) + var(--web-mini-h) + var(--web-safe-bottom) + 16px) !important;
+  }
+}
+
+/* Phones in landscape: the sheet goes side by side. */
+@media (max-width: 960px) and (max-height: 500px) and (orientation: landscape) {
+  html.is-web:not(#_):not(#__) body.web-np-open .right-panel {
+    padding: calc(var(--web-safe-top) + 12px) 24px 12px 24px !important;
+  }
+}

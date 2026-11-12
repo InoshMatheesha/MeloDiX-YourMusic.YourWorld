@@ -43,7 +43,15 @@ const { DATA_DIR, CACHE_DIR, CUSTOM_LYRICS_DIR, LYRICS_DIR, THUMBNAILS_DIR, META
 // streams fine without it, so this now defaults to OFF and is opt-in.
 // Explicit downloads (the download button) are unaffected.
 // ---------------------------------------------------------------------------
-let autoCacheEnabled = readStartupConfig().autoCachePlayedTracks === true;
+// Web mode: the same server runs as a Vercel function behind the browser
+// build (see api/index.js). There is no local disk worth caching to, no yt-dlp
+// and many users share one instance, so anything that writes per-user state
+// to disk is switched off (see WEB_ROUTE_OVERRIDES).
+const WEB_MODE = process.env.MOODEX_WEB === '1';
+// Largest byte range one web audio-proxy request relays (see handleAudioProxy).
+const WEB_PROXY_SLICE_BYTES = 3 * 1024 * 1024;
+
+let autoCacheEnabled = !WEB_MODE && readStartupConfig().autoCachePlayedTracks === true;
 
 function setAutoCacheEnabled(on) {
   autoCacheEnabled = !!on;
@@ -628,9 +636,15 @@ async function fetchDirectYoutubeStreamServer(videoId, quality = 'medium') {
     req.end();
   });
 
+  // The IOS client's audio URLs now need a PO token: without one, googlevideo
+  // serves the first ~1MB and then answers 403, so a track stops a minute in.
+  // The desktop app rarely lands here (it prefers yt-dlp); the web build has
+  // no yt-dlp, so it skips IOS and lets the caller fall back to SoundCloud.
+  const usableClients = WEB_MODE ? clients.filter((c) => c.clientName !== 'IOS') : clients;
+
   let candidate = null;
   try {
-    candidate = await Promise.any(clients.map(queryClient));
+    candidate = await Promise.any(usableClients.map(queryClient));
   } catch (_) {
     return null;
   }
@@ -731,7 +745,31 @@ async function refreshSoundCloudClientId(force = false) {
 
 const refreshServerScClientId = () => refreshSoundCloudClientId(true);
 
-async function fetchDirectSoundCloudStreamServer(scUrlOrId, queryFallback) {
+// Pick the SoundCloud search hit most likely to be the requested recording:
+// a full (not snipped) track, close to the expected length, and not a
+// nightcore/slowed/remix edit unless that is what was asked for.
+function pickSoundCloudSearchHit(col, query, expectedSec) {
+  const playable = col.filter(t => t && t.policy !== 'SNIP' && !t.snipped && t.duration > 30000);
+  if (!playable.length) return col[0] || null;
+  const q = String(query || '').toLowerCase();
+  const editRe = /(nightcore|slowed|sped ?up|reverb|8d|remix|cover|karaoke|instrumental|extended|mix|loop|1 ?hour|bass ?boosted)/i;
+  const exp = Number(expectedSec) || 0;
+  const scoreOf = (t, i) => {
+    let score = -i; // keep SoundCloud's own relevance as the tie-breaker
+    const name = `${t.title || ''} ${(t.user && t.user.username) || ''}`;
+    if (editRe.test(name) && !editRe.test(q)) score -= 40;
+    if (exp > 0) {
+      const diff = Math.abs(t.duration / 1000 - exp);
+      if (diff <= Math.max(6, exp * 0.04)) score += 30;
+      else if (diff <= Math.max(20, exp * 0.12)) score += 12;
+      else score -= 30 + Math.min(60, diff / 10);
+    }
+    return score;
+  };
+  return playable.map((t, i) => ({ t, s: scoreOf(t, i) })).sort((a, b) => b.s - a.s)[0].t;
+}
+
+async function fetchDirectSoundCloudStreamServer(scUrlOrId, queryFallback, expectedSec = 0) {
   let cid = await refreshSoundCloudClientId(false);
   const norm = normalizeSoundCloudUrl(scUrlOrId || '');
   const idMatch = String(norm).match(/(?:tracks\/|^)(\d{6,})/i);
@@ -747,12 +785,12 @@ async function fetchDirectSoundCloudStreamServer(scUrlOrId, queryFallback) {
         }
       }
       if (queryFallback) {
-        const sr = await fetch(`https://api-v2.soundcloud.com/search/tracks?q=${encodeURIComponent(queryFallback)}&limit=5&client_id=${cid}`, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+        const sr = await fetch(`https://api-v2.soundcloud.com/search/tracks?q=${encodeURIComponent(queryFallback)}&limit=${expectedSec ? 12 : 5}&client_id=${cid}`, { headers: { 'User-Agent': 'Mozilla/5.0' } });
         if (sr.status === 401 || sr.status === 403) { cid = await refreshServerScClientId(); continue; }
         if (sr.ok) {
           const sj = await sr.json();
           const col = (sj && Array.isArray(sj.collection)) ? sj.collection : [];
-          const pick = col.find(t => t.policy !== 'SNIP' && t.duration > 30000 && !t.snipped) || col[0];
+          const pick = pickSoundCloudSearchHit(col, queryFallback, expectedSec);
           if (pick) {
             const u = await resolveScTranscodingServer(pick, cid);
             if (u && !u.includes('/preview/') && !u.includes('cf-preview-media')) return u;
@@ -1721,6 +1759,8 @@ function sendProxiedImage(req, res, buffer, type, key) {
     'Cross-Origin-Resource-Policy': 'cross-origin',
     'Timing-Allow-Origin': '*'
   };
+  // On Vercel, let the CDN keep artwork so repeat views skip the function.
+  if (WEB_MODE) cors['Vercel-CDN-Cache-Control'] = 'public, max-age=2592000';
   if (req.headers['if-none-match'] === etag) {
     res.writeHead(304, Object.assign({ ETag: etag, 'Cache-Control': 'public, max-age=31536000, immutable' }, cors));
     return res.end();
@@ -3120,7 +3160,7 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
       // 3. Fallback to fetchDirectSoundCloudStreamServer('', q)
       if (!streamUrl && q) {
         try {
-          streamUrl = await fetchDirectSoundCloudStreamServer('', q);
+          streamUrl = await fetchDirectSoundCloudStreamServer('', q, parseFloat(duration) || 0);
         } catch (_) {}
       }
     } else {
@@ -3211,7 +3251,7 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
             }
           }
           if (!streamUrl) {
-            streamUrl = await fetchDirectSoundCloudStreamServer('', q);
+            streamUrl = await fetchDirectSoundCloudStreamServer('', q, parseFloat(duration) || 0);
           }
         } catch (_) {}
       }
@@ -3851,6 +3891,11 @@ async function handleAudioProxy(req, res, targetUrl, retried = false) {
       return res.end('Blocked target');
     }
     const isKnownAudioHost = /(?:^|\.)(?:googlevideo\.com|sndcdn\.com|bcbits\.com)$/i.test(parsed.hostname);
+    // A public deployment must not become an open relay: only audio CDNs.
+    if (WEB_MODE && !isKnownAudioHost && !/(?:^|\.)(?:dzcdn\.net|yandex\.net|yandex\.ru|itunes\.apple\.com|mzstatic\.com|soundcloud\.cloud)$/i.test(parsed.hostname)) {
+      res.writeHead(403);
+      return res.end('Blocked target');
+    }
     if (!isKnownAudioHost && parsed.protocol !== 'https:' && (await isPrivateHost(parsed.hostname))) {
       res.writeHead(403);
       return res.end('Blocked target');
@@ -3866,6 +3911,19 @@ async function handleAudioProxy(req, res, targetUrl, retried = false) {
     }
     if (req.headers['range'] !== undefined) {
       forward['Range'] = req.headers['range'];
+      // Serverless functions are billed and time-limited per request, and an
+      // open-ended "bytes=N-" from <audio> would hold one open for the whole
+      // track. Serve it in bounded slices; every browser follows a 206 with
+      // a Content-Range by asking for the next slice.
+      if (WEB_MODE) {
+        const m = /^bytes=(\d+)-(\d*)$/.exec(String(req.headers['range']).trim());
+        if (m) {
+          const startByte = Number(m[1]);
+          const cap = startByte + WEB_PROXY_SLICE_BYTES - 1;
+          const endByte = m[2] === '' ? cap : Math.min(Number(m[2]), cap);
+          forward['Range'] = `bytes=${startByte}-${endByte}`;
+        }
+      }
     }
 
     if (parsed.hostname.endsWith('googlevideo.com')) {
@@ -3896,6 +3954,18 @@ async function handleAudioProxy(req, res, targetUrl, retried = false) {
       // non-audio bytes and reported a bare "Format error", which told the
       // user nothing and burned one of the renderer's retries. Re-resolve the
       // stream once and serve that instead, so playback heals itself.
+      // googlevideo often redirects to another edge. The desktop browser can
+      // follow that itself (same IP); a web visitor cannot, since the link is
+      // bound to this server's IP, so follow it here.
+      const loc = proxyRes.headers.location;
+      if (WEB_MODE && loc && [301, 302, 303, 307, 308].includes(proxyRes.statusCode) && (req._moodexHops || 0) < 5) {
+        proxyRes.resume();
+        req._moodexHops = (req._moodexHops || 0) + 1;
+        let next = '';
+        try { next = new URL(loc, targetUrl).toString(); } catch (e) {}
+        if (next) return handleAudioProxy(req, res, next, retried);
+      }
+
       const isStale = proxyRes.statusCode === 403 || proxyRes.statusCode === 410 || proxyRes.statusCode === 404;
       if (isStale && !retried && parsed.hostname.endsWith('googlevideo.com')) {
         proxyRes.resume(); // drain the error body
@@ -7708,7 +7778,9 @@ async function handleLastFmRoute(req, res, pathname) {
   }
 }
 
-const server = http.createServer(async (req, res) => {
+async function handleRequest(req, res) {
+  if (WEB_MODE) return handleWebRequest(req, res);
+
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Headers', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -7739,15 +7811,128 @@ const server = http.createServer(async (req, res) => {
     return res.end();
   }
 
+  const reqPath = url.parse(req.url).pathname;
+  if (!reqPath.startsWith('/api/lastfm/') && TOKEN_PROTECTED_ROUTES.has(reqPath) && !tokenMatches(req.headers['x-moodex-token'])) {
+    res.writeHead(403, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({ success: false, error: 'forbidden' }));
+  }
+  return routeRequest(req, res);
+}
+
+// ---------------------------------------------------------------------------
+// Web mode
+// ---------------------------------------------------------------------------
+const WEB_UNAVAILABLE = { success: false, error: 'Not available in the web version' };
+const WEB_TOOLS_STATUS = { ytdlp: true, ytDlp: true, ffmpeg: true, web: true, percent: 100, step: '', error: null };
+
+// Routes that read or write this machine's disk, spawn yt-dlp/ffmpeg, or keep
+// one global account (Spotify OAuth). On a shared serverless instance they
+// would leak one visitor's data to the next, so the web answers them with an
+// inert result in the shape the renderer already handles.
+const WEB_ROUTE_OVERRIDES = {
+  '/api/state': [200, { success: true }],
+  '/api/lyrics-stream': [404, WEB_UNAVAILABLE],
+  '/api/audio-output-info': [200, { success: false, devices: [] }],
+  '/api/proxy-config': [200, WEB_UNAVAILABLE],
+  '/api/proxy-test': [200, WEB_UNAVAILABLE],
+  '/api/download': [501, WEB_UNAVAILABLE],
+  '/api/tmp-file': [404, WEB_UNAVAILABLE],
+  '/api/encode': [501, WEB_UNAVAILABLE],
+  '/api/local-track': [404, WEB_UNAVAILABLE],
+  '/api/downloaded-track': [404, WEB_UNAVAILABLE],
+  '/api/library-file': [404, WEB_UNAVAILABLE],
+  '/api/local-thumbnail': [404, WEB_UNAVAILABLE],
+  '/api/downloads': [200, { success: true, tracks: [], totalBytes: 0, dir: '' }],
+  '/api/offline-library': [200, { success: true, tracks: [], totalBytes: 0 }],
+  '/api/library': [200, []],
+  '/api/library-add': [200, { success: true }],
+  '/api/library-update': [200, { success: true }],
+  '/api/library-remove': [200, { success: true }],
+  '/api/offline-delete': [200, { success: true }],
+  '/api/clear-offline-library': [200, { success: true }],
+  '/api/auto-cache': [200, { success: true, enabled: false }],
+  '/api/check-cache': [200, { cached: false, streamUrl: null }],
+  '/api/prefetch': [200, { success: true }],
+  '/api/track-analysis': [200, { success: true, analysis: null }],
+  '/api/save-custom-lyrics': [200, { success: true }],
+  '/api/tools-status': [200, WEB_TOOLS_STATUS],
+  '/api/tools/status': [200, WEB_TOOLS_STATUS],
+  '/api/tools-install': [200, { started: false }],
+  '/api/tools/install': [200, { started: false }],
+  '/api/spotify-auth-start': [200, WEB_UNAVAILABLE],
+  '/api/spotify-callback': [404, WEB_UNAVAILABLE],
+  '/api/spotify-status': [200, { connected: false, error: '' }],
+  '/api/spotify-logout': [200, { success: true }],
+  '/api/spotify-library': [200, WEB_UNAVAILABLE]
+};
+
+// The routes return absolute http://127.0.0.1:<port> links for the desktop
+// renderer. In the browser they must be same-origin paths instead. A
+// googlevideo link is also bound to the server's IP, so the player is handed
+// the proxied URL straight away rather than finding out after a failed try.
+function webRewriteJson(pathname, text) {
+  let out = text.replace(/http:\/\/127\.0\.0\.1:\d+/g, '');
+  if (pathname === '/api/stream-info') {
+    try {
+      const data = JSON.parse(out);
+      if (data && data.success && !data.isHls && !data.isLocal && data.proxyUrl && /^https?:/i.test(data.streamUrl || '')) {
+        data.directUrl = data.streamUrl;
+        data.streamUrl = data.proxyUrl;
+        out = JSON.stringify(data);
+      }
+    } catch (e) {}
+  }
+  return out;
+}
+
+function wrapWebResponse(res, pathname) {
+  let isJson = false;
+  const origWriteHead = res.writeHead.bind(res);
+  const origEnd = res.end.bind(res);
+  res.writeHead = function (status, a, b) {
+    const headers = (a && typeof a === 'object') ? a : (b && typeof b === 'object' ? b : null);
+    const ct = String((headers && (headers['Content-Type'] || headers['content-type'])) || res.getHeader('content-type') || '');
+    isJson = /json/i.test(ct);
+    if (isJson && headers) {
+      delete headers['Content-Length'];
+      delete headers['content-length'];
+    }
+    return origWriteHead.apply(res, arguments);
+  };
+  res.end = function (chunk, ...rest) {
+    if (!isJson && !res.headersSent && /json/i.test(String(res.getHeader('content-type') || ''))) isJson = true;
+    if (isJson && chunk != null && typeof chunk !== 'function') {
+      try {
+        const text = Buffer.isBuffer(chunk) ? chunk.toString('utf8') : String(chunk);
+        chunk = webRewriteJson(pathname, text);
+        if (!res.headersSent) res.removeHeader('content-length');
+      } catch (e) {}
+    }
+    return origEnd(chunk, ...rest);
+  };
+}
+
+async function handleWebRequest(req, res) {
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204);
+    return res.end();
+  }
+  const pathname = url.parse(req.url).pathname || '/';
+  const override = WEB_ROUTE_OVERRIDES[pathname];
+  if (override) {
+    try { req.resume(); } catch (e) {}
+    res.writeHead(override[0], { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+    return res.end(JSON.stringify(override[1]));
+  }
+  wrapWebResponse(res, pathname);
+  return routeRequest(req, res);
+}
+
+async function routeRequest(req, res) {
   const parsedUrl = url.parse(req.url, true);
   const pathname = parsedUrl.pathname;
 
   if (pathname.startsWith('/api/lastfm/')) { handleLastFmRoute(req, res, pathname); return; }
-
-  if (TOKEN_PROTECTED_ROUTES.has(parsedUrl.pathname) && !tokenMatches(req.headers['x-moodex-token'])) {
-    res.writeHead(403, { 'Content-Type': 'application/json' });
-    return res.end(JSON.stringify({ success: false, error: 'forbidden' }));
-  }
 
   if (parsedUrl.pathname === '/api/audio-output-info' && req.method === 'GET') {
     const info = await getSystemAudioOutputInfo();
@@ -8438,6 +8623,14 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(400);
       return res.end();
     }
+    if (WEB_MODE) {
+      let targetHost = '';
+      try { targetHost = new URL(target).hostname; } catch (e) {}
+      if (await isPrivateHost(targetHost)) {
+        res.writeHead(403);
+        return res.end();
+      }
+    }
     const key = crypto.createHash('sha1').update(target).digest('hex');
 
     // Tier 1: hot in-memory LRU. Avoids a disk round-trip for the covers that
@@ -8663,7 +8856,9 @@ const server = http.createServer(async (req, res) => {
 
   res.writeHead(404);
   res.end('Not found');
-});
+}
+
+const server = http.createServer(handleRequest);
 
 function startServer(port = PORT) {
   if (server.listening) {
@@ -8691,7 +8886,7 @@ function startServer(port = PORT) {
   });
 }
 
-module.exports = { startServer, PORT, getServerToken, fetchLyricsDirect, fetchLrcLib, fetchGeniusLyrics, fetchNetEaseWords, fetchKugouLyrics, fetchMusixmatchLyrics, fetchNeteaseLyrics, fetchSoundCloudSearch, ytmusicSearch, parseYrc };
+module.exports = { startServer, handleRequest, PORT, getServerToken, fetchLyricsDirect, fetchLrcLib, fetchGeniusLyrics, fetchNetEaseWords, fetchKugouLyrics, fetchMusixmatchLyrics, fetchNeteaseLyrics, fetchSoundCloudSearch, ytmusicSearch, parseYrc };
 
 if (require.main === module) {
   startServer();

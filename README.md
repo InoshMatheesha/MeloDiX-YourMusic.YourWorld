@@ -285,6 +285,9 @@ src/
   server/     Local backend — search, streaming, yt-dlp/ffmpeg management
   shared/     Cross-process helpers — paths, logging, audio output
 assets/       Icons, logo and the built-in cover shapes
+web/          Browser build layer — Electron bridge shim, mobile CSS, service worker, PWA manifest
+api/          Vercel function that serves src/server for the web build
+scripts/      build-web.js (builds web-dist/) and serve-web.js (runs it locally)
 test/         Unit tests
 ```
 
@@ -293,6 +296,38 @@ test/         Unit tests
 ```bash
 moodex lyrics   # stream the current track's lyrics to your terminal
 ```
+
+---
+
+## Web version (Vercel)
+
+The same app also runs in a browser on Windows, macOS, Linux, Android and iOS,
+and can be installed to the home screen as an app (PWA). It reuses the desktop
+renderer and server unchanged. `scripts/build-web.js` swaps the Electron bridge
+for a browser shim and adds a phone layout: search at the top, a bottom tab bar,
+a mini player, and a full-screen Now Playing sheet.
+
+```bash
+npm run web          # build web-dist/ and serve it at http://localhost:3000
+```
+
+**Deploy:** import the repository in Vercel. `vercel.json` sets the build command,
+output folder and API function, so no settings are needed.
+
+What differs from the desktop app:
+
+- **Audio source.** Vercel has no yt-dlp, and YouTube blocks datacenter IPs. Tracks
+  therefore play from a matching SoundCloud upload, picked by title and length.
+  For full YouTube playback, run `npm run web` on your own machine or a VPS that
+  has yt-dlp installed. That server then uses yt-dlp the same way the desktop app does.
+- **Storage.** Playlists and settings stay in the browser. Files you add from
+  **Library** are kept in the browser's storage and work offline. `.mdacc` account
+  files work in both directions, so you can move your desktop profile to the web.
+- **Desktop-only, hidden on the web:** downloads, Discord, tray, auto-update,
+  Google sign-in, Spotify account login (public playlist import still works),
+  proxy settings and folder scanning.
+- **iOS:** add the app to the home screen for full-screen use. Safari may pause
+  audio that goes through the equalizer while the screen is locked.
 
 ---
 
