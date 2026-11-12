@@ -959,6 +959,41 @@ async function fetchDirectSoundCloudStreamServer(scUrlOrId, queryFallback, meta 
   return null;
 }
 
+// Every playable SoundCloud upload of a song, best first: the original
+// recording(s) before other versions. Powers both the automatic choice and
+// the "other versions" picker in the web app.
+async function collectScVersions(title, artist, expectedSec) {
+  const info = {
+    core: scCoreTitle(title, artist),
+    mainArtist: scMainArtist(artist),
+    expectedSec: Number(expectedSec) || 0,
+    query: `${title || ''} ${artist || ''}`
+  };
+  if (!info.core) return [];
+  const cid = await refreshSoundCloudClientId(false);
+  const queries = [...new Set([
+    `${artist || ''} - ${title || ''}`.trim(),
+    `${info.core} ${info.mainArtist}`.trim(),
+    info.core
+  ].filter(Boolean))];
+  const seen = new Set();
+  const pool = [];
+  for (const q of queries) {
+    const { col } = await scSearchTracks(q, cid);
+    for (const t of col) if (t && !seen.has(t.id)) { seen.add(t.id); pool.push(t); }
+  }
+  const originals = rankSoundCloudSearchHits(pool, info);
+  const originalIds = new Set(originals.map((t) => t.id));
+  const others = rankSoundCloudFallbackHits(pool, info).filter((t) => !originalIds.has(t.id));
+  return originals.concat(others).map((t) => ({
+    scId: String(t.id),
+    title: String(t.title || '').slice(0, 120),
+    uploader: String((t.user && t.user.username) || '').slice(0, 60),
+    duration: Math.round((t.duration || 0) / 1000),
+    original: originalIds.has(t.id)
+  }));
+}
+
 // Official 30s preview from iTunes, then Deezer, for the same song and artist.
 async function fetchStorePreview(info) {
   if (!info || !info.core) return null;
@@ -3047,6 +3082,8 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
   trackUrl = normalizeSoundCloudUrl(trackUrl);
   const parsedUrl = (req && req.url) ? url.parse(req.url, true) : { query: {} };
   const forShare = Boolean(parsedUrl.query && parsedUrl.query.forShare === '1');
+  // A version the listener picked themselves (web "other versions" picker).
+  const pickedScId = String((parsedUrl.query && parsedUrl.query.scId) || '').trim();
   // Declared here: it is filled inside the resolve try-block below but read
   // after it, and a block-scoped declaration there crashed the server.
   let shareWebUrl = '';
@@ -3072,6 +3109,24 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
   }
 
   const meta = { title, artist, duration, thumbnail };
+
+  if (pickedScId && /^\d{4,}$/.test(pickedScId)) {
+    let picked = null;
+    try {
+      const cid = await refreshSoundCloudClientId(false);
+      const r = await fetch(`https://api-v2.soundcloud.com/tracks/${pickedScId}?client_id=${cid}`, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+      if (r.ok) {
+        const tObj = await r.json();
+        picked = await resolveScTranscodingServer(tObj, cid, true);
+      }
+    } catch (_) {}
+    if (!picked) {
+      res.writeHead(502, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ success: false, error: 'That version could not be played' }));
+    }
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+    return res.end(JSON.stringify({ success: true, isLocal: false, streamUrl: picked, isHls: picked.includes('.m3u8'), picked: true }));
+  }
 
   const [cachedFile, downloadedName] = await Promise.all([
     cleanId ? findCachedFile(cleanId) : Promise.resolve(null),
@@ -5544,6 +5599,7 @@ const TOKEN_PROTECTED_ROUTES = new Set([
   '/api/prefetch',
   '/api/check-cache',
   '/api/stream-info',
+  '/api/alt-versions',
   '/api/track-analysis',
   '/api/tools-status',
   '/api/tools-install',
@@ -8070,6 +8126,7 @@ function webRewriteJson(pathname, text) {
       const data = JSON.parse(out);
       if (data && data.success && data.streamUrl && scFallbackNotes.has(data.streamUrl)) {
         data.notice = scFallbackNotes.get(data.streamUrl);
+        data.hasAlternatives = true; // the player offers "other versions"
         out = JSON.stringify(data);
       }
       if (data && data.success && !data.isHls && !data.isLocal && data.proxyUrl && /^https?:/i.test(data.streamUrl || '')) {
@@ -8603,6 +8660,13 @@ async function routeRequest(req, res) {
     return res.end(JSON.stringify({ started: true }));
   }
 
+  if (parsedUrl.pathname === '/api/alt-versions') {
+    const versions = await collectScVersions(parsedUrl.query.title || '', parsedUrl.query.artist || '', parsedUrl.query.duration || 0)
+      .catch(() => []);
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+    return res.end(JSON.stringify({ success: true, versions }));
+  }
+
   if (parsedUrl.pathname === '/api/stream-info') {
     const trackUrl = parsedUrl.query.url || '';
     const trackId = parsedUrl.query.id || '';
@@ -9083,7 +9147,7 @@ function startServer(port = PORT) {
   });
 }
 
-module.exports = { startServer, handleRequest, rankSoundCloudSearchHits, rankSoundCloudFallbackHits, fetchStorePreview, scCoreTitle, scMainArtist, PORT, getServerToken, fetchLyricsDirect, fetchLrcLib, fetchGeniusLyrics, fetchNetEaseWords, fetchKugouLyrics, fetchMusixmatchLyrics, fetchNeteaseLyrics, fetchSoundCloudSearch, ytmusicSearch, parseYrc };
+module.exports = { startServer, handleRequest, rankSoundCloudSearchHits, rankSoundCloudFallbackHits, fetchStorePreview, collectScVersions, scCoreTitle, scMainArtist, PORT, getServerToken, fetchLyricsDirect, fetchLrcLib, fetchGeniusLyrics, fetchNetEaseWords, fetchKugouLyrics, fetchMusixmatchLyrics, fetchNeteaseLyrics, fetchSoundCloudSearch, ytmusicSearch, parseYrc };
 
 if (require.main === module) {
   startServer();

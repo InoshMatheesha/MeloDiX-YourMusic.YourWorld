@@ -4348,6 +4348,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (data && data.success && data.streamUrl) {
           nextTrack._preloadedStreamUrl = data.streamUrl;
           nextTrack._streamNotice = data.notice || '';
+          nextTrack._hasAlternatives = !!data.hasAlternatives;
         }
       } catch (_) { }
     }
@@ -4516,6 +4517,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (track._preloadedStreamUrl) {
         if (currentToken !== state.loadToken) return;
         if (track._streamNotice) showToast(track._streamNotice, 'info');
+        if (window.__moodexShowAltVersions) window.__moodexShowAltVersions(!!track._hasAlternatives || !!track._pickedScId);
         if (hlsInstance) {
           try { hlsInstance.destroy(); } catch (_) { }
           hlsInstance = null;
@@ -4587,7 +4589,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       // The server says when it is standing in another version for a song
       // whose original it could not reach (web build).
       track._streamNotice = data.notice || '';
+      track._hasAlternatives = !!data.hasAlternatives;
       if (data.notice) showToast(data.notice, 'info');
+      if (window.__moodexShowAltVersions) window.__moodexShowAltVersions(!!data.hasAlternatives || !!track._pickedScId);
       // Chart entries (iTunes ids) are matched to a YouTube video on the
       // server; keep that id so a dead link can be re-resolved later.
       if (data.resolvedId && /^[A-Za-z0-9_-]{11}$/.test(data.resolvedId)) track._ytId = data.resolvedId;
@@ -26708,6 +26712,122 @@ document.addEventListener('DOMContentLoaded', async () => {
       heroBanner.style.setProperty('--px', 0);
       heroBanner.style.setProperty('--py', 0);
     });
+  }
+
+  // -------------------------------------------------------------------------
+  // "Other versions" picker (web build only)
+  //
+  // On the web the original recording of a song is sometimes out of reach, and
+  // the server stands in the closest version it can find. This lets the
+  // listener choose a different one instead of being stuck with that pick.
+  // -------------------------------------------------------------------------
+  if (window.__MOODEX_WEB__) {
+    const altBtn = document.createElement('button');
+    altBtn.id = 'web-alt-versions-btn';
+    altBtn.type = 'button';
+    altBtn.className = 'web-alt-versions-btn hidden';
+    altBtn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h10M4 12h10M4 18h7"/><path d="M18 9v8"/><circle cx="20" cy="17" r="2"/></svg><span>Other versions</span>';
+    altBtn.title = 'Play a different version of this song';
+
+    function altHost() {
+      return document.querySelector('.right-panel-meta') || document.querySelector('.track-meta');
+    }
+
+    function showAltButton(show) {
+      const host = altHost();
+      if (host && altBtn.parentElement !== host) host.appendChild(altBtn);
+      altBtn.classList.toggle('hidden', !show);
+    }
+
+    function closeAltSheet() {
+      const old = document.getElementById('web-alt-sheet');
+      if (old) old.remove();
+      document.removeEventListener('keydown', onAltKey);
+    }
+    function onAltKey(e) { if (e.key === 'Escape') closeAltSheet(); }
+
+    async function playPickedVersion(version) {
+      const track = state.currentTrack;
+      if (!track) return;
+      closeAltSheet();
+      showToast('Loading ' + (version.title || 'that version') + '…', 'info');
+      try {
+        const res = await fetch(`${location.origin}/api/stream-info?scId=${encodeURIComponent(version.scId)}`);
+        const data = await res.json();
+        if (!data || !data.success || !data.streamUrl) throw new Error((data && data.error) || 'Could not play that version');
+        // Remember the choice so skipping back to this track keeps it.
+        track._preloadedStreamUrl = data.streamUrl;
+        track._streamNotice = version.original ? '' : 'Playing: ' + (version.title || 'another version');
+        track._pickedScId = version.scId;
+        playTrack(track);
+      } catch (err) {
+        showToast(err.message || 'Could not play that version', 'error');
+      }
+    }
+
+    async function openAltSheet() {
+      const track = state.currentTrack;
+      if (!track) return;
+      closeAltSheet();
+
+      const sheet = document.createElement('div');
+      sheet.id = 'web-alt-sheet';
+      sheet.className = 'web-alt-sheet';
+      sheet.innerHTML = `
+        <div class="web-alt-backdrop"></div>
+        <div class="web-alt-card" role="dialog" aria-label="Other versions">
+          <div class="web-alt-head">
+            <div class="web-alt-titles">
+              <strong>Other versions</strong>
+              <span>${escapeHtml(track.title || '')}</span>
+            </div>
+            <button class="web-alt-close" type="button" aria-label="Close">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>
+            </button>
+          </div>
+          <div class="web-alt-list"><div class="web-alt-loading">Looking for other versions…</div></div>
+        </div>`;
+      document.body.appendChild(sheet);
+      document.addEventListener('keydown', onAltKey);
+      sheet.querySelector('.web-alt-backdrop').addEventListener('click', closeAltSheet);
+      sheet.querySelector('.web-alt-close').addEventListener('click', closeAltSheet);
+
+      const list = sheet.querySelector('.web-alt-list');
+      let versions = [];
+      try {
+        const url = `${location.origin}/api/alt-versions?title=${encodeURIComponent(track.title || '')}&artist=${encodeURIComponent(track.artist || '')}&duration=${encodeURIComponent(track.duration || 0)}`;
+        const data = await (await fetch(url)).json();
+        versions = (data && data.versions) || [];
+      } catch (_) { }
+
+      if (!document.getElementById('web-alt-sheet')) return; // closed while loading
+      if (!versions.length) {
+        list.innerHTML = '<div class="web-alt-loading">No other versions found for this song.</div>';
+        return;
+      }
+
+      list.innerHTML = versions.map((v) => `
+        <button class="web-alt-row${v.scId === track._pickedScId ? ' is-current' : ''}" type="button" data-sc="${escapeHtml(v.scId)}">
+          <span class="web-alt-row-main">
+            <span class="web-alt-row-title">${escapeHtml(v.title || 'Untitled')}</span>
+            <span class="web-alt-row-sub">${escapeHtml(v.uploader || '')}${v.original ? ' · original' : ''}</span>
+          </span>
+          <span class="web-alt-row-dur">${formatDuration(v.duration || 0)}</span>
+        </button>`).join('');
+
+      list.querySelectorAll('.web-alt-row').forEach((row) => {
+        row.addEventListener('click', () => {
+          const v = versions.find((x) => x.scId === row.dataset.sc);
+          if (v) playPickedVersion(v);
+        });
+      });
+    }
+
+    altBtn.addEventListener('click', (e) => { e.stopPropagation(); openAltSheet(); });
+
+    // The server flags a track whose original it could not reach; the button
+    // appears for those, and stays while that track is playing.
+    window.__moodexShowAltVersions = (show) => showAltButton(show);
   }
 
   emitPluginEvent('ready');

@@ -67,6 +67,150 @@ html.is-web .web-download-btn:focus-visible { outline: 2px solid currentColor; o
   html.is-web .web-download-btn { display: none; }
 }
 
+/* ---------------------------------------------------------------------------
+ * "Other versions" picker (web only). The button sits under the song title in
+ * Now Playing and appears only when the original recording was unavailable.
+ * ------------------------------------------------------------------------- */
+html.is-web .web-alt-versions-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin: 8px auto 0;
+  padding: 5px 11px 5px 9px;
+  border: 1px solid color-mix(in srgb, currentColor 28%, transparent);
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--md-sys-color-surface-container-high, #2a2a2e) 65%, transparent);
+  color: var(--md-sys-color-on-surface, #fff);
+  font: 600 11.5px/1 inherit;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+}
+html.is-web .web-alt-versions-btn.hidden { display: none !important; }
+html.is-web .web-alt-versions-btn:active { transform: scale(0.97); }
+
+html.is-web .web-alt-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 100000;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+html.is-web .web-alt-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+}
+html.is-web .web-alt-card {
+  position: relative;
+  width: min(560px, 100%);
+  max-height: min(72vh, 620px);
+  display: flex;
+  flex-direction: column;
+  padding: 14px 10px calc(10px + env(safe-area-inset-bottom, 0px));
+  box-sizing: border-box;
+  border-radius: 20px 20px 0 0;
+  /* The app's surface variables are semi-transparent by design (glass look);
+   * a list of choices needs to be solid to stay readable. */
+  background: #ffffff;
+  color: #15151a;
+  box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.5);
+  animation: webAltUp 0.24s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+body.theme-dark html.is-web .web-alt-card,
+html.is-web body.theme-dark .web-alt-card {
+  background: #15151a;
+  color: #f3f3f7;
+}
+@keyframes webAltUp { from { transform: translateY(26px); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (min-width: 761px) {
+  html.is-web .web-alt-sheet { align-items: center; }
+  html.is-web .web-alt-card { border-radius: 20px; animation: none; }
+}
+html.is-web .web-alt-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 8px 10px;
+}
+html.is-web .web-alt-titles { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+html.is-web .web-alt-titles strong { font-size: 16px; }
+html.is-web .web-alt-titles span {
+  font-size: 12.5px;
+  color: currentColor;
+  opacity: 0.72;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+html.is-web .web-alt-close {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 17px;
+  background: color-mix(in srgb, currentColor 12%, transparent);
+  color: inherit;
+  cursor: pointer;
+}
+html.is-web .web-alt-list { overflow-y: auto; -webkit-overflow-scrolling: touch; }
+html.is-web .web-alt-loading {
+  padding: 22px 12px;
+  text-align: center;
+  font-size: 13px;
+  color: currentColor;
+  opacity: 0.7;
+}
+html.is-web .web-alt-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 56px;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 12px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+html.is-web .web-alt-row:active { background: color-mix(in srgb, currentColor 10%, transparent); }
+html.is-web .web-alt-row.is-current { background: color-mix(in srgb, var(--md-sys-color-primary, #4c8dff) 22%, transparent); }
+html.is-web .web-alt-row-main { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1 1 auto; }
+html.is-web .web-alt-row-title {
+  font-size: 14px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+html.is-web .web-alt-row-sub {
+  font-size: 12px;
+  color: currentColor;
+  opacity: 0.68;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+html.is-web .web-alt-row-dur {
+  flex: 0 0 auto;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  color: currentColor;
+  opacity: 0.68;
+}
+
 /* Close and Queue buttons of the phone Now Playing sheet (shown only inside it). */
 .web-np-close,
 #web-np-queue { display: none; }
