@@ -514,6 +514,23 @@
     document.body.appendChild(close);
 
     var left = document.querySelector('.playbar-left');
+    // Queue button for the Now Playing sheet: closes the sheet and opens the
+    // Queue tab. Hidden in the mini player (web.css).
+    var navQueue = document.getElementById('nav-queue');
+    if (left && navQueue) {
+      var queueBtn = document.createElement('button');
+      queueBtn.id = 'web-np-queue';
+      queueBtn.type = 'button';
+      queueBtn.title = 'Queue';
+      queueBtn.setAttribute('aria-label', 'Show queue');
+      queueBtn.innerHTML = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="7" x2="20" y2="7"></line><line x1="4" y1="12" x2="20" y2="12"></line><line x1="4" y1="17" x2="14" y2="17"></line></svg>';
+      queueBtn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        setSheet(false);
+        navQueue.click();
+      });
+      left.appendChild(queueBtn);
+    }
     if (left) {
       left.addEventListener('click', function (e) {
         if (!isPhone() || document.body.classList.contains('web-np-open')) return;

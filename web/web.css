@@ -40,8 +40,9 @@ html.is-web:not(#_):not(#__) [data-action="download"] {
   display: none !important;
 }
 
-/* Close button of the phone Now Playing sheet (shown only inside it). */
-.web-np-close { display: none; }
+/* Close and Queue buttons of the phone Now Playing sheet (shown only inside it). */
+.web-np-close,
+#web-np-queue { display: none; }
 
 /* ---------------------------------------------------------------------------
  * 2. Browser chrome: the browser draws the window, so the title bar is only a
@@ -665,6 +666,31 @@ html.is-touch:not(#_):not(#__) .settings-card {
     position: absolute;
     left: 20px;
     top: 10px;
+  }
+  /* Queue button (added by shim.js), beside the like button. */
+  html.is-web:not(#_):not(#__) body.web-np-open .playbar-left #web-np-queue {
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    position: absolute;
+    right: 68px;
+    top: 10px;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border: none;
+    border-radius: 18px;
+    background: transparent;
+    color: var(--md-sys-color-on-surface, #fff);
+    cursor: pointer;
+  }
+  html.is-web:not(#_):not(#__) body.web-np-open .playbar-left #web-np-queue:active {
+    background: rgba(255, 255, 255, 0.1);
+  }
+  /* The lyrics tools row (edit, sync, translate, karaoke) is desktop
+   * clutter on a phone. */
+  html.is-web:not(#_):not(#__) body.web-np-open .lyrics-header {
+    display: none !important;
   }
   html.is-web:not(#_):not(#__) body.web-np-open .playbar-center {
     grid-column: 1 / -1;
