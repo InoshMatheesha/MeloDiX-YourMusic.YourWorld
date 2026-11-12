@@ -546,6 +546,75 @@
   });
 
   // ---------------------------------------------------------------------------
+  // "Download app" button in the top bar, for desktop computers only (never
+  // on Android, iPhone or iPad). Links to the latest GitHub release: the
+  // Windows installer directly, otherwise the release page.
+  // ---------------------------------------------------------------------------
+  var REPO = 'InoshMatheesha/MeloDiX-YourMusic.YourWorld';
+  var RELEASES_URL = 'https://github.com/' + REPO + '/releases/latest';
+  var isDesktopOS = !isIOS && !isAndroid && /Windows|Macintosh|Mac OS X|Linux|CrOS/i.test(ua) && !/Mobile|Tablet/i.test(ua);
+  function desktopOsName() {
+    if (/Windows/i.test(ua)) return 'Windows';
+    if (/Macintosh|Mac OS X/i.test(ua)) return 'Mac';
+    return 'Linux';
+  }
+  function pickReleaseAsset(assets, os) {
+    var names = {
+      Windows: [/-win-x64-setup\.exe$/i, /\.exe$/i],
+      Mac: [/\.dmg$/i, /-mac-.*\.zip$/i],
+      Linux: [/\.AppImage$/i]
+    }[os] || [];
+    for (var i = 0; i < names.length; i++) {
+      for (var j = 0; j < assets.length; j++) {
+        if (names[i].test(assets[j].name || '')) return assets[j];
+      }
+    }
+    return null;
+  }
+  function latestRelease() {
+    var CACHE_KEY = 'moodex_web_latest_release';
+    try {
+      var cached = JSON.parse(sessionStorage.getItem(CACHE_KEY) || 'null');
+      if (cached && Date.now() - cached.at < 3600000) return Promise.resolve(cached.data);
+    } catch (e) {}
+    return fetch('https://api.github.com/repos/' + REPO + '/releases/latest', { headers: { Accept: 'application/vnd.github+json' } })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        var data = d ? { tag: d.tag_name || '', assets: (d.assets || []).map(function (a) { return { name: a.name, url: a.browser_download_url }; }) } : null;
+        try { if (data) sessionStorage.setItem(CACHE_KEY, JSON.stringify({ at: Date.now(), data: data })); } catch (e) {}
+        return data;
+      })
+      .catch(function () { return null; });
+  }
+  function addDownloadButton() {
+    if (!isDesktopOS || onWelcomePage) return;
+    var host = document.querySelector('.titlebar-controls');
+    if (!host || document.getElementById('web-download-app')) return;
+    var os = desktopOsName();
+    var a = document.createElement('a');
+    a.id = 'web-download-app';
+    a.className = 'web-download-btn';
+    a.href = RELEASES_URL;
+    a.target = '_blank';
+    a.rel = 'noopener';
+    a.title = 'Download the Melodix desktop app';
+    a.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"></path><polyline points="7 10 12 15 17 10"></polyline><path d="M5 21h14"></path></svg><span>Download for ' + os + '</span>';
+    host.insertBefore(a, host.firstChild);
+    latestRelease().then(function (rel) {
+      if (!rel) return;
+      var asset = pickReleaseAsset(rel.assets, os);
+      if (asset) {
+        a.href = asset.url;
+        a.removeAttribute('target');
+        a.title = 'Download ' + asset.name + (rel.tag ? ' (' + rel.tag + ')' : '');
+      } else {
+        a.querySelector('span').textContent = 'Download app';
+      }
+    });
+  }
+  document.addEventListener('DOMContentLoaded', addDownloadButton);
+
+  // ---------------------------------------------------------------------------
   // Service worker: offline app shell, cached artwork, /__local/ files.
   // ---------------------------------------------------------------------------
   if ('serviceWorker' in navigator && location.protocol !== 'file:' && !/[?&]nosw\b/.test(location.search)) {

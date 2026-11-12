@@ -944,10 +944,46 @@ async function fetchDirectSoundCloudStreamServer(scUrlOrId, queryFallback, meta 
             return u;
           }
         }
+        // SoundCloud shows some regions (e.g. Vercel's US servers) only a DRM
+        // copy of the official track, with no preview. The store previews on
+        // iTunes and Deezer work everywhere.
+        const storePreview = await fetchStorePreview(info);
+        if (storePreview) {
+          rememberFallbackNote(storePreview, 'Only a 30-second preview is available');
+          return storePreview;
+        }
       }
       break;
     } catch (_) {}
   }
+  return null;
+}
+
+// Official 30s preview from iTunes, then Deezer, for the same song and artist.
+async function fetchStorePreview(info) {
+  if (!info || !info.core) return null;
+  const term = `${info.mainArtist} ${info.core}`.trim();
+  const sameSong = (title, artist) => {
+    const t = scNormalize(title);
+    const a = scNormalize(artist);
+    return t.includes(info.core) && (!info.mainArtist || a.includes(info.mainArtist)) && !SC_EDIT_RE.test(title || '');
+  };
+  try {
+    const r = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(term)}&entity=song&limit=10`, { signal: AbortSignal.timeout(6000) });
+    if (r.ok) {
+      const j = await r.json();
+      const hit = (j.results || []).find((x) => x.previewUrl && sameSong(x.trackName, x.artistName));
+      if (hit) return hit.previewUrl;
+    }
+  } catch (_) {}
+  try {
+    const r = await fetch(`https://api.deezer.com/search?q=${encodeURIComponent(term)}&limit=10`, { signal: AbortSignal.timeout(6000) });
+    if (r.ok) {
+      const j = await r.json();
+      const hit = (j.data || []).find((x) => x.preview && sameSong(x.title, x.artist && x.artist.name));
+      if (hit) return hit.preview;
+    }
+  } catch (_) {}
   return null;
 }
 
@@ -4140,6 +4176,11 @@ async function handleAudioProxy(req, res, targetUrl, retried = false) {
         return;
       }
 
+      // iTunes previews are labelled audio/x-m4p, which Safari refuses to
+      // play; the bytes are plain AAC in MP4.
+      if (/^audio\/x-m4[ap]/i.test(String(proxyRes.headers['content-type'] || ''))) {
+        proxyRes.headers['content-type'] = 'audio/mp4';
+      }
       res.writeHead(proxyRes.statusCode, proxyRes.headers);
       proxyRes.on('error', () => { try { res.destroy(); } catch (e) {} });
       proxyRes.pipe(res);
@@ -9042,7 +9083,7 @@ function startServer(port = PORT) {
   });
 }
 
-module.exports = { startServer, handleRequest, rankSoundCloudSearchHits, rankSoundCloudFallbackHits, scCoreTitle, scMainArtist, PORT, getServerToken, fetchLyricsDirect, fetchLrcLib, fetchGeniusLyrics, fetchNetEaseWords, fetchKugouLyrics, fetchMusixmatchLyrics, fetchNeteaseLyrics, fetchSoundCloudSearch, ytmusicSearch, parseYrc };
+module.exports = { startServer, handleRequest, rankSoundCloudSearchHits, rankSoundCloudFallbackHits, fetchStorePreview, scCoreTitle, scMainArtist, PORT, getServerToken, fetchLyricsDirect, fetchLrcLib, fetchGeniusLyrics, fetchNetEaseWords, fetchKugouLyrics, fetchMusixmatchLyrics, fetchNeteaseLyrics, fetchSoundCloudSearch, ytmusicSearch, parseYrc };
 
 if (require.main === module) {
   startServer();

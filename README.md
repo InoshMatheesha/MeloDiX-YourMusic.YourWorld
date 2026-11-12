@@ -10,7 +10,8 @@
 
 <p align="center">
   <b>Your Music. Your World.</b><br>
-  A free, open-source desktop music player for YouTube Music, SoundCloud, and local files.<br>
+  A free, open-source music player for YouTube Music, SoundCloud, and local files,<br>
+  for Windows or in the browser on any phone, tablet or computer.<br>
   Built with Material Design 3, no tracking, and no account needed.
 </p>
 
@@ -19,17 +20,17 @@
     <img src="https://img.shields.io/badge/Download-6750A4?style=for-the-badge&logo=download&logoColor=white" height="40" alt="Download">
   </a>
   &nbsp;
-  <a href="https://github.com/InoshMatheesha/MeloDiX-YourMusic.YourWorld">
-    <img src="https://img.shields.io/badge/Website-1F2328?style=for-the-badge&logo=open-webui&logoColor=white" height="40" alt="Visit Website">
+  <a href="https://melodix-you-music-app.vercel.app">
+    <img src="https://img.shields.io/badge/Open_web_app-1F2328?style=for-the-badge&logo=googlechrome&logoColor=white" height="40" alt="Open the web app">
   </a>
 </p>
 
 <p align="center">
-  <a href="#whats-new">What's new</a> &nbsp;·&nbsp;
   <a href="#core-features">Features</a> &nbsp;·&nbsp;
   <a href="#built-in-audio-suite">Audio Suite</a> &nbsp;·&nbsp;
   <a href="#material-design-3-expressive-ui">Interface</a> &nbsp;·&nbsp;
   <a href="#download-and-install">Install</a> &nbsp;·&nbsp;
+  <a href="#web-app">Web app</a> &nbsp;·&nbsp;
   <a href="#faq">FAQ</a> &nbsp;·&nbsp;
   <a href="#build-from-source">Build</a>
 </p>
@@ -53,31 +54,13 @@ own files — all from a single Material Design 3 window.
 There is no account, no sign-up, and no telemetry. Your playlists, settings and
 downloads stay on your machine.
 
+On a phone or any computer without installing anything, use the web app:
+**[melodix-you-music-app.vercel.app](https://melodix-you-music-app.vercel.app)**. It can be added to your home screen.
+
 > **Note on streaming sources.** Melodix searches public catalogues and plays
 > publicly available audio streams. It is a player, not a subscription service, and
 > it does not bypass paid tiers or DRM. Please respect the terms of service of each
 > platform and the rights of the artists you listen to.
-
----
-
-## What's new
-
-**v1.1.14**
-- The glow around the active sidebar button (Settings, at the bottom of the collapsed sidebar) is no longer cut off. It is now a soft halo in your accent colour.
-
-**v1.1.13**
-- **Updates work again.** *Check for updates* found new versions but the update window stayed invisible. It now shows, and **Update** installs and reopens Melodix on its own.
-- A small **Update available** pill appears at the top right of Home when a new version is out. Nothing pops up by itself.
-- **Later** installs the update quietly the next time you close the app.
-
-**v1.1.12**
-- **Drag to reorder** in the Queue, Liked songs and playlists now behaves like Spotify: drag to the edge and the list scrolls with you, and the track stays where you drop it.
-- Visualizer and shaped-cover settings moved out of Advanced into one compact card under **Settings → Tracks**.
-
-**v1.1.11**
-- A much fuller **Home page**: *Because you listened to…*, *On repeat*, *New releases*, regional charts and genre shelves.
-- **Play next** in the right-click menu.
-- Reorganised Settings. Plugins and custom theme files were removed.
 
 ---
 
@@ -226,8 +209,7 @@ Set `MOODEX_DATA_DIR` to move it somewhere else.
 
 ## Customizing with CSS
 
-Plugins and custom theme files were removed in v1.1.11. For your own tweaks, use the
-built-in **CSS editor** in **Settings → Advanced**. Melodix sets its colours from
+For your own tweaks, use the built-in **CSS editor** in **Settings → Advanced**. Melodix sets its colours from
 JavaScript, so add `!important` to override them:
 
 ```css
@@ -299,33 +281,39 @@ moodex lyrics   # stream the current track's lyrics to your terminal
 
 ---
 
-## Web version (Vercel)
+## Web app
 
-The same app also runs in a browser on Windows, macOS, Linux, Android and iOS,
-and can be installed to the home screen as an app (PWA). It reuses the desktop
-renderer and server unchanged. `scripts/build-web.js` swaps the Electron bridge
-for a browser shim and adds a phone layout: search at the top, a bottom tab bar,
-a mini player, and a full-screen Now Playing sheet.
+**Open it:** [melodix-you-music-app.vercel.app](https://melodix-you-music-app.vercel.app)
+
+The same app runs in the browser on Windows, macOS, Linux, Android and iOS, and can
+be installed to the home screen (PWA). On a phone it has its own layout: search at
+the top, a bottom tab bar, a mini player and a full-screen Now Playing view. On a
+computer, a **Download for Windows** button in the top bar links to the latest
+desktop installer.
+
+It reuses the desktop interface and server. `scripts/build-web.js` swaps the
+Electron bridge for a browser shim and adds the web layer from `web/`.
 
 ```bash
 npm run web          # build web-dist/ and serve it at http://localhost:3000
 ```
 
-**Deploy:** import the repository in Vercel. `vercel.json` sets the build command,
-output folder and API function, so no settings are needed.
+**Deploy your own:** import the repository in Vercel. `vercel.json` sets the build
+command, output folder and API function, so no settings are needed.
 
 What differs from the desktop app:
 
-- **Audio source.** Vercel has no yt-dlp, and YouTube blocks datacenter IPs. Tracks
-  therefore play from a matching SoundCloud upload, picked by title and length.
-  For full YouTube playback, run `npm run web` on your own machine or a VPS that
-  has yt-dlp installed. That server then uses yt-dlp the same way the desktop app does.
+- **Audio source.** YouTube blocks cloud servers such as Vercel, so the web app
+  plays songs from SoundCloud. It plays the original recording when one exists;
+  otherwise the closest version of the same song (or the official 30-second
+  preview), with a short note. For original YouTube audio on every song, run
+  `npm run web` on your own computer with yt-dlp installed.
 - **Storage.** Playlists and settings stay in the browser. Files you add from
   **Library** are kept in the browser's storage and work offline. `.mdacc` account
   files work in both directions, so you can move your desktop profile to the web.
-- **Desktop-only, hidden on the web:** downloads, Discord, tray, auto-update,
-  Google sign-in, Spotify account login (public playlist import still works),
-  proxy settings and folder scanning.
+- **Desktop-only:** downloads, Discord, tray, auto-update, Google sign-in, Spotify
+  account login (public playlist import still works), proxy settings and folder
+  scanning.
 - **iOS:** add the app to the home screen for full-screen use. Safari may pause
   audio that goes through the equalizer while the screen is locked.
 
