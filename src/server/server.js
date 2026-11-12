@@ -697,9 +697,13 @@ async function isPlayableStreamUrl(streamUrl) {
 
 async function resolveScTranscodingServer(trackObj, cid) {
   if (!trackObj || !trackObj.media || !Array.isArray(trackObj.media.transcodings)) return null;
-  const list = trackObj.media.transcodings.filter(t => !t.snipped);
+  // DRM streams ("encrypted-hls", "cbc-encrypted-hls", "ctr-encrypted-hls";
+  // SoundCloud serves these to some regions) need a licence server and will
+  // not play, so they never count as a usable transcoding.
+  const isEncrypted = (t) => /encrypted|cbcs|cenc/i.test(`${(t.format && t.format.protocol) || ''} ${(t.format && t.format.mime_type) || ''} ${t.preset || ''} ${t.url || ''}`);
+  const list = trackObj.media.transcodings.filter(t => !t.snipped && !isEncrypted(t));
   const prog = list.find(t => t.format && t.format.protocol === 'progressive');
-  const hls = list.find(t => t.format && t.format.protocol === 'hls' && !/encrypted/i.test(t.format.mime_type || ''));
+  const hls = list.find(t => t.format && t.format.protocol === 'hls');
   const chosen = prog || hls || list[0];
   if (!chosen || !chosen.url || chosen.snipped === true) return null;
   const sep = chosen.url.includes('?') ? '&' : '?';
@@ -745,12 +749,12 @@ async function refreshSoundCloudClientId(force = false) {
 
 const refreshServerScClientId = () => refreshSoundCloudClientId(true);
 
-// Pick the SoundCloud search hit most likely to be the requested recording:
+// Rank SoundCloud search hits, most likely to be the requested recording first:
 // a full (not snipped) track, close to the expected length, and not a
 // nightcore/slowed/remix edit unless that is what was asked for.
-function pickSoundCloudSearchHit(col, query, expectedSec) {
+function rankSoundCloudSearchHits(col, query, expectedSec) {
   const playable = col.filter(t => t && t.policy !== 'SNIP' && !t.snipped && t.duration > 30000);
-  if (!playable.length) return col[0] || null;
+  if (!playable.length) return col.slice(0, 1);
   const q = String(query || '').toLowerCase();
   const editRe = /(nightcore|slowed|sped ?up|reverb|8d|remix|cover|karaoke|instrumental|extended|mix|loop|1 ?hour|bass ?boosted)/i;
   const exp = Number(expectedSec) || 0;
@@ -766,7 +770,7 @@ function pickSoundCloudSearchHit(col, query, expectedSec) {
     }
     return score;
   };
-  return playable.map((t, i) => ({ t, s: scoreOf(t, i) })).sort((a, b) => b.s - a.s)[0].t;
+  return playable.map((t, i) => ({ t, s: scoreOf(t, i) })).sort((a, b) => b.s - a.s).map(x => x.t);
 }
 
 async function fetchDirectSoundCloudStreamServer(scUrlOrId, queryFallback, expectedSec = 0) {
@@ -790,8 +794,8 @@ async function fetchDirectSoundCloudStreamServer(scUrlOrId, queryFallback, expec
         if (sr.ok) {
           const sj = await sr.json();
           const col = (sj && Array.isArray(sj.collection)) ? sj.collection : [];
-          const pick = pickSoundCloudSearchHit(col, queryFallback, expectedSec);
-          if (pick) {
+          // The best match may only exist as a DRM stream; try the next ones.
+          for (const pick of rankSoundCloudSearchHits(col, queryFallback, expectedSec).slice(0, 4)) {
             const u = await resolveScTranscodingServer(pick, cid);
             if (u && !u.includes('/preview/') && !u.includes('cf-preview-media')) return u;
           }
