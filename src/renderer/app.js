@@ -8299,32 +8299,43 @@ document.addEventListener('DOMContentLoaded', async () => {
     return targetTime;
   }
 
+  // Pointer events cover mouse, touch and pen alike; mouse events alone never
+  // start a drag from a finger on a phone or touchscreen.
   if (el.scrubberTrack) {
-    el.scrubberTrack.addEventListener('mousedown', (e) => {
+    el.scrubberTrack.addEventListener('pointerdown', (e) => {
+      if (e.button !== undefined && e.button > 0) return;
       isDraggingScrubber = true;
       hasDrawnPausedFrame = false;
       if (!animationFrameId) startVisualizers();
       el.scrubberTrack.classList.add('dragging');
       updateScrubberPositionFromEvent(e);
+      try { el.scrubberTrack.setPointerCapture(e.pointerId); } catch (_) { }
+      if (e.pointerType !== 'mouse') e.preventDefault();
     });
   }
 
-  window.addEventListener('mousemove', (e) => {
+  window.addEventListener('pointermove', (e) => {
     if (!isDraggingScrubber || isDraggingTvkScrubber) return;
     updateScrubberPositionFromEvent(e);
   });
 
-  window.addEventListener('mouseup', (e) => {
+  const finishScrubberDrag = (e, seek) => {
     if (!isDraggingScrubber || isDraggingTvkScrubber) return;
     isDraggingScrubber = false;
-    if (el.scrubberTrack) el.scrubberTrack.classList.remove('dragging');
+    if (el.scrubberTrack) {
+      el.scrubberTrack.classList.remove('dragging');
+      try { el.scrubberTrack.releasePointerCapture(e.pointerId); } catch (_) { }
+    }
     const targetTime = updateScrubberPositionFromEvent(e);
-    if (!isNaN(targetTime) && el.nativeAudio) {
+    if (seek && !isNaN(targetTime) && el.nativeAudio) {
       el.nativeAudio.currentTime = targetTime;
       updateMediaPositionState();
     }
     state.scrubberDragTargetTime = undefined;
-  });
+  };
+  window.addEventListener('pointerup', (e) => finishScrubberDrag(e, true));
+  // Cancelled (e.g. the system took the gesture over): end the drag, no seek.
+  window.addEventListener('pointercancel', (e) => finishScrubberDrag(e, false));
 
   let isDraggingTvkScrubber = false;
   function updateTvkScrubberPositionFromEvent(e) {

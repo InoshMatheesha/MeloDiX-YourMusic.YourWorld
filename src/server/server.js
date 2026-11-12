@@ -292,11 +292,12 @@ const downloadInFlight = new Map();
   };
 });
 
+// unref: housekeeping alone must not keep the process alive (tests, CLI).
 setInterval(() => {
   boundMap(searchCache, 20);
   boundMap(lyricsCache, 30);
   if (global.gc) { try { global.gc(); } catch (_) {} }
-}, 300000);
+}, 300000).unref();
 
 const MAX_CACHE_ENTRIES = 500;
 function cacheSet(map, key, value, max = MAX_CACHE_ENTRIES) {
@@ -749,31 +750,93 @@ async function refreshSoundCloudClientId(force = false) {
 
 const refreshServerScClientId = () => refreshSoundCloudClientId(true);
 
-// Rank SoundCloud search hits, most likely to be the requested recording first:
-// a full (not snipped) track, close to the expected length, and not a
-// nightcore/slowed/remix edit unless that is what was asked for.
-function rankSoundCloudSearchHits(col, query, expectedSec) {
-  const playable = col.filter(t => t && t.policy !== 'SNIP' && !t.snipped && t.duration > 30000);
-  if (!playable.length) return col.slice(0, 1);
-  const q = String(query || '').toLowerCase();
-  const editRe = /(nightcore|slowed|sped ?up|reverb|8d|remix|cover|karaoke|instrumental|extended|mix|loop|1 ?hour|bass ?boosted)/i;
-  const exp = Number(expectedSec) || 0;
-  const scoreOf = (t, i) => {
-    let score = -i; // keep SoundCloud's own relevance as the tie-breaker
-    const name = `${t.title || ''} ${(t.user && t.user.username) || ''}`;
-    if (editRe.test(name) && !editRe.test(q)) score -= 40;
-    if (exp > 0) {
-      const diff = Math.abs(t.duration / 1000 - exp);
-      if (diff <= Math.max(6, exp * 0.04)) score += 30;
-      else if (diff <= Math.max(20, exp * 0.12)) score += 12;
-      else score -= 30 + Math.min(60, diff / 10);
-    }
-    return score;
-  };
-  return playable.map((t, i) => ({ t, s: scoreOf(t, i) })).sort((a, b) => b.s - a.s).map(x => x.t);
+// ---------------------------------------------------------------------------
+// SoundCloud as a stand-in source for a known track (title, artist, length).
+// Used by the web build, where YouTube audio is out of reach. It must find
+// the original recording - not a cover, remix or sped-up edit - so a hit only
+// counts when its title matches and its length matches the original.
+// ---------------------------------------------------------------------------
+const SC_EDIT_RE = /\b(nightcore|slowed|sped[\s-]?up|reverb|8d|remix|rmx|cover|covered|karaoke|instrumental|acoustic|extended|mashup|mash[\s-]?up|bootleg|edit|loop|1[\s-]?hour|bass[\s-]?boosted|live|trance mix|dj mix|flip|vip|tribute|piano|guitar)\b/i;
+
+function scNormalize(s) {
+  return String(s || '')
+    .normalize('NFKD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim();
 }
 
-async function fetchDirectSoundCloudStreamServer(scUrlOrId, queryFallback, expectedSec = 0) {
+// "Artist - Song (Official Video) ft. X [Lyrics]" -> "song"
+function scCoreTitle(title, artist) {
+  let t = String(title || '');
+  t = t.replace(/\([^)]*\)|\[[^\]]*\]|\{[^}]*\}/g, ' ');
+  t = t.replace(/\s(?:ft|feat|featuring)\.?\s.*$/i, ' ');
+  t = t.replace(/\b(official|music|lyric|lyrics|audio|video|visualizer|hd|4k|mv)\b/gi, ' ');
+  const parts = t.split(/\s[-–—|]\s/);
+  if (parts.length > 1) {
+    const a = scNormalize(artist);
+    const nonArtist = parts.filter((p) => { const n = scNormalize(p); return n && !(a && (a.includes(n) || n.includes(a))); });
+    t = (nonArtist.length ? nonArtist : parts).sort((x, y) => scNormalize(y).length - scNormalize(x).length)[0];
+  }
+  return scNormalize(t);
+}
+
+function scMainArtist(artist) {
+  return scNormalize(String(artist || '').split(/\s*(?:&|,|\bx\b|\bfeat\.?|\bft\.?|\bwith\b|\band\b)\s*/i)[0]);
+}
+
+function rankSoundCloudSearchHits(col, meta) {
+  const core = meta.core;
+  const coreTokens = core.split(' ').filter(Boolean);
+  const mainArtist = meta.mainArtist;
+  const wantsEdit = SC_EDIT_RE.test(meta.query || '');
+  const exp = Number(meta.expectedSec) || 0;
+  const ranked = [];
+  col.forEach((t, i) => {
+    if (!t || t.policy === 'SNIP' || t.snipped || !(t.duration > 30000)) return;
+    const title = scNormalize(t.title);
+    const titleWords = title.split(' ');
+    const uploader = scNormalize((t.user && t.user.username) || '');
+    // Title must carry the song name (all of its words, in any order).
+    if (core && !(title.includes(core) || coreTokens.every((w) => titleWords.includes(w)))) return;
+    // Covers, remixes and edits are a different recording.
+    if (!wantsEdit && SC_EDIT_RE.test(`${t.title || ''} ${(t.user && t.user.username) || ''}`)) return;
+    // Mashups ("song x other song") and medleys ("a / b / c") are not the song.
+    if (!wantsEdit && (/\s(?:x|vs\.?)\s/i.test(t.title || '') || /\s\/\s|medley/i.test(t.title || ''))) return;
+    const artistMatch = !!mainArtist && (uploader.includes(mainArtist) || title.includes(mainArtist));
+    let score = -i * 0.5;
+    if (exp > 0) {
+      // A re-upload of the original has the original's length to within a few
+      // seconds. Allow a little more slack only when the artist is named.
+      const diff = Math.abs(t.duration / 1000 - exp);
+      if (diff <= Math.max(4, exp * 0.025)) score += 30;
+      else if (artistMatch && diff <= Math.max(12, exp * 0.07)) score += 8;
+      else return; // a different length is a different recording
+    } else if (!artistMatch || t.duration < 60000) {
+      return; // nothing to check the length against: insist on the artist
+    }
+    if (artistMatch) score += 15;
+    // Extra words beyond "artist + song" hint at a variant; prefer clean titles.
+    const artistWords = mainArtist ? mainArtist.split(' ') : [];
+    const extra = titleWords.filter((w) => w && !coreTokens.includes(w) && !artistWords.includes(w)).length;
+    score -= Math.min(extra, 8);
+    ranked.push({ t, score });
+  });
+  return ranked.sort((a, b) => b.score - a.score).map((x) => x.t);
+}
+
+async function scSearchTracks(query, cid, limit = 15) {
+  const sr = await fetch(`https://api-v2.soundcloud.com/search/tracks?q=${encodeURIComponent(query)}&limit=${limit}&client_id=${cid}`, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+  if (sr.status === 401 || sr.status === 403) return { authFailed: true, col: [] };
+  if (!sr.ok) return { col: [] };
+  const sj = await sr.json();
+  return { col: (sj && Array.isArray(sj.collection)) ? sj.collection : [] };
+}
+
+// meta: { title, artist, expectedSec } of the track being stood in for.
+async function fetchDirectSoundCloudStreamServer(scUrlOrId, queryFallback, meta = {}) {
+  if (typeof meta === 'number') meta = { expectedSec: meta };
   let cid = await refreshSoundCloudClientId(false);
   const norm = normalizeSoundCloudUrl(scUrlOrId || '');
   const idMatch = String(norm).match(/(?:tracks\/|^)(\d{6,})/i);
@@ -789,16 +852,37 @@ async function fetchDirectSoundCloudStreamServer(scUrlOrId, queryFallback, expec
         }
       }
       if (queryFallback) {
-        const sr = await fetch(`https://api-v2.soundcloud.com/search/tracks?q=${encodeURIComponent(queryFallback)}&limit=${expectedSec ? 12 : 5}&client_id=${cid}`, { headers: { 'User-Agent': 'Mozilla/5.0' } });
-        if (sr.status === 401 || sr.status === 403) { cid = await refreshServerScClientId(); continue; }
-        if (sr.ok) {
-          const sj = await sr.json();
-          const col = (sj && Array.isArray(sj.collection)) ? sj.collection : [];
-          // The best match may only exist as a DRM stream; try the next ones.
-          for (const pick of rankSoundCloudSearchHits(col, queryFallback, expectedSec).slice(0, 4)) {
-            const u = await resolveScTranscodingServer(pick, cid);
-            if (u && !u.includes('/preview/') && !u.includes('cf-preview-media')) return u;
-          }
+        // Without separate title/artist, read them from "Artist - Title".
+        let title = meta.title || '';
+        let artist = meta.artist || '';
+        if (!title) {
+          const m = String(queryFallback).split(/\s[-–—]\s/);
+          title = m.length > 1 ? m.slice(1).join(' - ') : queryFallback;
+          artist = artist || (m.length > 1 ? m[0] : '');
+        }
+        const info = {
+          core: scCoreTitle(title, artist),
+          mainArtist: scMainArtist(artist),
+          expectedSec: meta.expectedSec,
+          query: `${title} ${queryFallback}`
+        };
+        // The full "Artist & Artist - Title" query often returns only the
+        // official 30s preview; looser queries find full uploads.
+        const queries = [...new Set([queryFallback, `${info.core} ${info.mainArtist}`.trim(), info.core].filter(Boolean))];
+        const seen = new Set();
+        const pool = [];
+        let authFailed = false;
+        for (const q of queries) {
+          const { col, authFailed: af } = await scSearchTracks(q, cid);
+          if (af) { authFailed = true; break; }
+          for (const t of col) if (t && !seen.has(t.id)) { seen.add(t.id); pool.push(t); }
+          if (rankSoundCloudSearchHits(pool, info).length >= 2) break;
+        }
+        if (authFailed) { cid = await refreshServerScClientId(); continue; }
+        // The best match may only exist as a DRM stream; try the next ones.
+        for (const pick of rankSoundCloudSearchHits(pool, info).slice(0, 4)) {
+          const u = await resolveScTranscodingServer(pick, cid);
+          if (u && !u.includes('/preview/') && !u.includes('cf-preview-media')) return u;
         }
       }
       break;
@@ -2867,6 +2951,9 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
   trackUrl = normalizeSoundCloudUrl(trackUrl);
   const parsedUrl = (req && req.url) ? url.parse(req.url, true) : { query: {} };
   const forShare = Boolean(parsedUrl.query && parsedUrl.query.forShare === '1');
+  // Declared here: it is filled inside the resolve try-block below but read
+  // after it, and a block-scoped declaration there crashed the server.
+  let shareWebUrl = '';
   const forceYtDlp = Boolean(parsedUrl.query && parsedUrl.query.forceYtDlp === '1');
   const quality = (parsedUrl.query && parsedUrl.query.quality) || 'medium';
   const queryQ = (parsedUrl.query && parsedUrl.query.q) ? String(parsedUrl.query.q).trim() : '';
@@ -3164,7 +3251,7 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
       // 3. Fallback to fetchDirectSoundCloudStreamServer('', q)
       if (!streamUrl && q) {
         try {
-          streamUrl = await fetchDirectSoundCloudStreamServer('', q, parseFloat(duration) || 0);
+          streamUrl = await fetchDirectSoundCloudStreamServer('', q, { title, artist, expectedSec: parseFloat(duration) || 0 });
         } catch (_) {}
       }
     } else {
@@ -3255,14 +3342,13 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
             }
           }
           if (!streamUrl) {
-            streamUrl = await fetchDirectSoundCloudStreamServer('', q, parseFloat(duration) || 0);
+            streamUrl = await fetchDirectSoundCloudStreamServer('', q, { title, artist, expectedSec: parseFloat(duration) || 0 });
           }
         } catch (_) {}
       }
     }
 
 
-    let shareWebUrl = '';
     if (forShare && (!streamUrl || streamUrl.includes('.m3u8')) && (title || artist)) {
       try {
         const rawYt = await executeYtDlp([
@@ -3312,7 +3398,9 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
   if (!streamUrl) {
     try { logger.error('Stream resolve failed: ' + (title || trackUrl)); } catch (_) {}
     res.writeHead(500, { 'Content-Type': 'application/json' });
-    return res.end(JSON.stringify({ success: false, error: 'could not extract audio stream' }));
+    // The web build only plays a matching original recording, never a cover,
+    // so say plainly when none was found.
+    return res.end(JSON.stringify({ success: false, error: WEB_MODE ? "The original recording of this song isn't available in the web version" : 'could not extract audio stream' }));
   }
 
   const isHls = streamUrl.includes('.m3u8');
@@ -8890,7 +8978,7 @@ function startServer(port = PORT) {
   });
 }
 
-module.exports = { startServer, handleRequest, PORT, getServerToken, fetchLyricsDirect, fetchLrcLib, fetchGeniusLyrics, fetchNetEaseWords, fetchKugouLyrics, fetchMusixmatchLyrics, fetchNeteaseLyrics, fetchSoundCloudSearch, ytmusicSearch, parseYrc };
+module.exports = { startServer, handleRequest, rankSoundCloudSearchHits, scCoreTitle, scMainArtist, PORT, getServerToken, fetchLyricsDirect, fetchLrcLib, fetchGeniusLyrics, fetchNetEaseWords, fetchKugouLyrics, fetchMusixmatchLyrics, fetchNeteaseLyrics, fetchSoundCloudSearch, ytmusicSearch, parseYrc };
 
 if (require.main === module) {
   startServer();

@@ -71,10 +71,29 @@ html.is-web:not(#_):not(#__) body {
  * 3. Touch devices: no hover, bigger hit targets, no tap flash, no
  *    accidental text selection or callouts on long-press.
  * ------------------------------------------------------------------------- */
+/* No blue/grey tap flash on any element (Chrome Android, iOS Safari and
+ * DevTools device mode, which may not report touch at load). */
+html.is-web,
+html.is-web * {
+  -webkit-tap-highlight-color: transparent !important;
+}
 html.is-touch:not(#_):not(#__) {
-  -webkit-tap-highlight-color: transparent;
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
+}
+/* Scrubbers: the finger drag seeks instead of scrolling the page, and the
+ * thin bar gets a taller invisible touch area. */
+html.is-web #scrubber-track,
+html.is-web #tvk-progress-row {
+  touch-action: none;
+}
+html.is-web #scrubber-track::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -14px;
+  bottom: -14px;
 }
 html.is-touch:not(#_):not(#__) body {
   -webkit-user-select: none;
@@ -589,6 +608,15 @@ html.is-touch:not(#_):not(#__) .settings-card {
   }
   html.is-web:not(#_):not(#__) body.web-np-open .right-panel-title { font-size: 20px !important; }
   html.is-web:not(#_):not(#__) body.web-np-open .lyrics-section {
+    position: relative !important;
+    inset: auto !important;
+    top: auto !important;
+    left: auto !important;
+    right: auto !important;
+    transform: none !important;
+    width: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
     flex: 1 1 auto !important;
     min-height: 0 !important;
     margin-top: 12px !important;
