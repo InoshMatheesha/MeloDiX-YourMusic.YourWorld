@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Welcome to Moodex - Setup</title>
+  <title>Welcome to Melodix - Setup</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;700&display=swap" rel="stylesheet">
@@ -266,6 +266,18 @@
 
     .moodex-title span:nth-child(4) {
       animation-delay: 1.35s;
+    }
+
+    .moodex-title span:nth-child(5) {
+      animation-delay: 1.5s;
+    }
+
+    .moodex-title span:nth-child(6) {
+      animation-delay: 1.65s;
+    }
+
+    .moodex-title span:nth-child(7) {
+      animation-delay: 1.8s;
     }
 
     body:not(.intro) #step1 .stacked-group {
@@ -1149,18 +1161,18 @@
             </g>
           </svg>
           <div class="icon-tint">
-            <img class="moodex-icon" src="../../assets/icon.png" alt="Moodex"
+            <img class="moodex-icon" src="../../assets/icon.png" alt="Melodix"
               onerror="this.onerror=null; this.src='data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 24 24\' fill=\'%23ffffff\'><path d=\'M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z\'/></svg>';">
           </div>
         </div>
         <h1 class="moodex-title">
-          <span>M</span><span>o</span><span>o</span><span>d</span><span>e</span><span>x</span>
+          <span>M</span><span>e</span><span>l</span><span>o</span><span>d</span><span>i</span><span>x</span>
         </h1>
       </div>
 
       <div class="stacked-group">
         <div class="stacked-container top">
-          <h2 class="step-header-title" data-i18n>Welcome to Moodex.</h2>
+          <h2 class="step-header-title" data-i18n>Welcome to Melodix.</h2>
           <p class="step-header-subtitle" data-i18n>Let's get started.</p>
         </div>
 
@@ -1453,8 +1465,8 @@
       <div class="stacked-group">
 
         <div class="stacked-container stacked-3-top">
-          <h2 class="step-header-title" data-i18n>Add Moodex to your launcher</h2>
-          <p class="step-header-subtitle" id="launcherSub" data-i18n>Open Moodex in one click from your Start menu or
+          <h2 class="step-header-title" data-i18n>Add Melodix to your launcher</h2>
+          <p class="step-header-subtitle" id="launcherSub" data-i18n>Open Melodix in one click from your Start menu or
             applications menu.</p>
         </div>
 
@@ -1465,7 +1477,7 @@
             </svg>
           </div>
           <div>
-            <div class="launcher-name">Moodex</div>
+            <div class="launcher-name">Melodix</div>
             <div class="launcher-desc" data-i18n>Music player</div>
           </div>
         </div>
@@ -1479,7 +1491,7 @@
           </div>
           <div class="row-text">
             <div class="row-title" id="launcherTitle" data-i18n>Start menu shortcut</div>
-            <div class="row-sub" id="launcherRowSub" data-i18n>Add Moodex with its icon so you can find it by searching
+            <div class="row-sub" id="launcherRowSub" data-i18n>Add Melodix with its icon so you can find it by searching
             </div>
           </div>
           <button class="sw on" role="switch" aria-checked="true" id="launcherSwitch"></button>
@@ -1536,7 +1548,7 @@
             </div>
             <div class="row-text">
               <div class="row-title" data-i18n>Import a Spotify playlist</div>
-              <div class="row-sub" data-i18n>Paste a public playlist link and it becomes a Moodex playlist</div>
+              <div class="row-sub" data-i18n>Paste a public playlist link and it becomes a Melodix playlist</div>
             </div>
           </div>
           <div class="field-row">
@@ -1641,14 +1653,14 @@
 
       async spotifyLookup(url) {
         const port = await this.serverPort();
-        if (!port) return { success: false, error: 'Moodex server is not available here' };
+        if (!port) return { success: false, error: 'Melodix server is not available here' };
         try {
           const res = await fetch(`http://127.0.0.1:${port}/api/spotify-import?url=${encodeURIComponent(url)}`, {
             headers: { 'X-Moodex-Token': this.api?.serverToken || '' }
           });
           return await res.json();
         } catch (e) {
-          return { success: false, error: 'Could not reach the Moodex server' };
+          return { success: false, error: 'Could not reach the Melodix server' };
         }
       }
     };
@@ -2181,16 +2193,16 @@
 
       if (platform === 'win32') {
         launcherTitle.textContent = 'Start menu shortcut';
-        launcherSub.textContent = 'Pin Moodex to the Start menu so you can open it by searching.';
-        launcherRowSub.textContent = 'Adds Moodex with its icon to the Start menu';
+        launcherSub.textContent = 'Pin Melodix to the Start menu so you can open it by searching.';
+        launcherRowSub.textContent = 'Adds Melodix with its icon to the Start menu';
       } else {
         launcherTitle.textContent = 'Applications menu entry';
-        launcherSub.textContent = 'Add Moodex to your applications menu with its icon and description.';
+        launcherSub.textContent = 'Add Melodix to your applications menu with its icon and description.';
         launcherRowSub.textContent = 'Creates a launcher that starts the AppImage';
       }
 
       if (!info) return;
-      if (info.installed) setLauncherUnavailable('Moodex is already in your launcher');
+      if (info.installed) setLauncherUnavailable('Melodix is already in your launcher');
       else if (!info.canInstall) setLauncherUnavailable(info.reason || 'Not available here');
     }
 
