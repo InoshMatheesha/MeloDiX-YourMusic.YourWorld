@@ -861,8 +861,8 @@ function rankSoundCloudFallbackHits(col, meta) {
 
 // Stream URL -> note for the player, for URLs that are a stand-in version.
 const scFallbackNotes = new Map();
-function rememberFallbackNote(url, note) {
-  scFallbackNotes.set(url, note);
+function rememberFallbackNote(url, note, scId = '') {
+  scFallbackNotes.set(url, { note, scId: String(scId || '') });
   while (scFallbackNotes.size > 500) scFallbackNotes.delete(scFallbackNotes.keys().next().value);
 }
 
@@ -928,7 +928,7 @@ async function fetchDirectSoundCloudStreamServer(scUrlOrId, queryFallback, meta 
         for (const pick of rankSoundCloudFallbackHits(pool, info).slice(0, 4)) {
           const u = await resolveScTranscodingServer(pick, cid);
           if (u && !u.includes('/preview/') && !u.includes('cf-preview-media')) {
-            rememberFallbackNote(u, 'Original unavailable \u2014 playing the closest version');
+            rememberFallbackNote(u, 'Original unavailable \u2014 playing the closest version', pick.id);
             return u;
           }
         }
@@ -940,7 +940,7 @@ async function fetchDirectSoundCloudStreamServer(scUrlOrId, queryFallback, meta 
         if (official) {
           const u = await resolveScTranscodingServer(official, cid, true);
           if (u) {
-            rememberFallbackNote(u, 'Only a 30-second preview is available');
+            rememberFallbackNote(u, 'Only a 30-second preview is available', official.id);
             return u;
           }
         }
@@ -976,16 +976,31 @@ async function collectScVersions(title, artist, expectedSec) {
     `${info.core} ${info.mainArtist}`.trim(),
     info.core
   ].filter(Boolean))];
+  // In parallel, but merged in query order so the ranking tie-breaker still
+  // follows SoundCloud's own relevance for the most specific query.
+  const results = await Promise.all(queries.map((q) => scSearchTracks(q, cid).catch(() => ({ col: [] }))));
   const seen = new Set();
   const pool = [];
-  for (const q of queries) {
-    const { col } = await scSearchTracks(q, cid);
+  for (const { col } of results) {
     for (const t of col) if (t && !seen.has(t.id)) { seen.add(t.id); pool.push(t); }
   }
   const originals = rankSoundCloudSearchHits(pool, info);
   const originalIds = new Set(originals.map((t) => t.id));
   const others = rankSoundCloudFallbackHits(pool, info).filter((t) => !originalIds.has(t.id));
-  return originals.concat(others).map((t) => ({
+  const ranked = originals.concat(others).slice(0, 14);
+
+  // Only offer versions that really play from here: in some regions
+  // SoundCloud serves a DRM-only copy, which would fail after the tap.
+  const checked = await Promise.all(ranked.map(async (t) => {
+    try {
+      const u = await resolveScTranscodingServer(t, cid, true);
+      return u ? t : null;
+    } catch (e) {
+      return null;
+    }
+  }));
+
+  return checked.filter(Boolean).map((t) => ({
     scId: String(t.id),
     title: String(t.title || '').slice(0, 120),
     uploader: String((t.user && t.user.username) || '').slice(0, 60),
@@ -8125,7 +8140,9 @@ function webRewriteJson(pathname, text) {
     try {
       const data = JSON.parse(out);
       if (data && data.success && data.streamUrl && scFallbackNotes.has(data.streamUrl)) {
-        data.notice = scFallbackNotes.get(data.streamUrl);
+        const fb = scFallbackNotes.get(data.streamUrl);
+        data.notice = fb.note;
+        data.pickedScId = fb.scId; // marks the playing one in the picker
         data.hasAlternatives = true; // the player offers "other versions"
         out = JSON.stringify(data);
       }

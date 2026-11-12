@@ -4349,6 +4349,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           nextTrack._preloadedStreamUrl = data.streamUrl;
           nextTrack._streamNotice = data.notice || '';
           nextTrack._hasAlternatives = !!data.hasAlternatives;
+          if (data.pickedScId) nextTrack._pickedScId = data.pickedScId;
         }
       } catch (_) { }
     }
@@ -4590,6 +4591,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       // whose original it could not reach (web build).
       track._streamNotice = data.notice || '';
       track._hasAlternatives = !!data.hasAlternatives;
+      if (data.pickedScId) track._pickedScId = data.pickedScId;
       if (data.notice) showToast(data.notice, 'info');
       if (window.__moodexShowAltVersions) window.__moodexShowAltVersions(!!data.hasAlternatives || !!track._pickedScId);
       // Chart entries (iTunes ids) are matched to a YouTube video on the
