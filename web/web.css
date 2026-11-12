@@ -765,6 +765,15 @@ html.is-touch:not(#_):not(#__) .settings-card {
   html.is-web:not(#_):not(#__) .ctx-menu {
     max-width: calc(100vw - 16px) !important;
   }
+  html.is-web:not(#_):not(#__) .moodex-toast {
+    max-width: calc(100vw - 24px) !important;
+    white-space: normal !important;
+    box-sizing: border-box;
+  }
+  html.is-web:not(#_):not(#__) .moodex-toast .toast-text {
+    white-space: normal !important;
+    overflow-wrap: anywhere;
+  }
   html.is-web:not(#_):not(#__) .toast-container,
   html.is-web:not(#_):not(#__) #toast-container {
     bottom: calc(var(--web-tab-h) + var(--web-mini-h) + var(--web-safe-bottom) + 16px) !important;

@@ -1,0 +1,11 @@
+# Only the web build's inputs go to Vercel on CLI deploys
+# (Git deploys clone the repo and are unaffected).
+node_modules
+dist
+web-dist
+bin
+github
+plugin
+test
+.env*
+*.log

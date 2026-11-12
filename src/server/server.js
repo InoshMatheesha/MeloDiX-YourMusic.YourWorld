@@ -696,24 +696,25 @@ async function isPlayableStreamUrl(streamUrl) {
   });
 }
 
-async function resolveScTranscodingServer(trackObj, cid) {
+// allowPreview: accept the 30s preview of a Go+ track (web last resort only).
+async function resolveScTranscodingServer(trackObj, cid, allowPreview = false) {
   if (!trackObj || !trackObj.media || !Array.isArray(trackObj.media.transcodings)) return null;
   // DRM streams ("encrypted-hls", "cbc-encrypted-hls", "ctr-encrypted-hls";
   // SoundCloud serves these to some regions) need a licence server and will
   // not play, so they never count as a usable transcoding.
   const isEncrypted = (t) => /encrypted|cbcs|cenc/i.test(`${(t.format && t.format.protocol) || ''} ${(t.format && t.format.mime_type) || ''} ${t.preset || ''} ${t.url || ''}`);
-  const list = trackObj.media.transcodings.filter(t => !t.snipped && !isEncrypted(t));
+  const list = trackObj.media.transcodings.filter(t => (allowPreview || !t.snipped) && !isEncrypted(t));
   const prog = list.find(t => t.format && t.format.protocol === 'progressive');
   const hls = list.find(t => t.format && t.format.protocol === 'hls');
   const chosen = prog || hls || list[0];
-  if (!chosen || !chosen.url || chosen.snipped === true) return null;
+  if (!chosen || !chosen.url || (chosen.snipped === true && !allowPreview)) return null;
   const sep = chosen.url.includes('?') ? '&' : '?';
   const auth = trackObj.track_authorization ? `&track_authorization=${encodeURIComponent(trackObj.track_authorization)}` : '';
   const res = await fetch(`${chosen.url}${sep}client_id=${cid}${auth}`, { headers: { 'User-Agent': 'Mozilla/5.0' } });
   if (!res.ok) return null;
   const j = await res.json();
   const u = (j && j.url) ? j.url : null;
-  if (!u || u.includes('/preview/') || u.includes('cf-preview-media')) return null;
+  if (!u || (!allowPreview && (u.includes('/preview/') || u.includes('cf-preview-media')))) return null;
   return u;
 }
 
@@ -826,6 +827,45 @@ function rankSoundCloudSearchHits(col, meta) {
   return ranked.sort((a, b) => b.score - a.score).map((x) => x.t);
 }
 
+// When no original recording exists on SoundCloud, the web build still plays
+// something rather than failing: the closest version of the same song. Same
+// title first, then the least-altered kind of version, closest in length.
+const SC_KIND_PENALTY = [
+  [/\b(mashup|mash[\s-]?up|medley)\b|\s(?:x|vs\.?)\s|\s\/\s/i, 40],
+  [/\b(instrumental|karaoke|8d|1[\s-]?hour|loop)\b/i, 30],
+  [/\b(nightcore|slowed|sped[\s-]?up|reverb|bass[\s-]?boosted)\b/i, 22],
+  [/\b(remix|rmx|remake|rework|reprise|bootleg|flip|vip|edit|trance mix|dj mix)\b/i, 16],
+  [/\b(cover|covered|tribute|acoustic|piano|guitar)\b/i, 10],
+  [/\b(live|extended)\b/i, 6]
+];
+
+function rankSoundCloudFallbackHits(col, meta) {
+  const coreTokens = meta.core.split(' ').filter(Boolean);
+  const mainArtist = meta.mainArtist;
+  const exp = Number(meta.expectedSec) || 0;
+  const ranked = [];
+  col.forEach((t, i) => {
+    if (!t || t.policy === 'SNIP' || t.snipped || !(t.duration > 60000)) return;
+    const name = `${t.title || ''} ${(t.user && t.user.username) || ''}`;
+    const titleWords = scNormalize(t.title).split(' ');
+    const shared = coreTokens.filter((w) => titleWords.includes(w)).length;
+    if (coreTokens.length && shared === 0) return; // not the same song at all
+    let score = (shared / Math.max(1, coreTokens.length)) * 100 - i * 0.5;
+    for (const [re, penalty] of SC_KIND_PENALTY) if (re.test(name)) score -= penalty;
+    if (mainArtist && scNormalize(name).includes(mainArtist)) score += 15;
+    if (exp > 0) score -= Math.min(Math.abs(t.duration / 1000 - exp) / 4, 40);
+    ranked.push({ t, score });
+  });
+  return ranked.sort((a, b) => b.score - a.score).map((x) => x.t);
+}
+
+// Stream URL -> note for the player, for URLs that are a stand-in version.
+const scFallbackNotes = new Map();
+function rememberFallbackNote(url, note) {
+  scFallbackNotes.set(url, note);
+  while (scFallbackNotes.size > 500) scFallbackNotes.delete(scFallbackNotes.keys().next().value);
+}
+
 async function scSearchTracks(query, cid, limit = 15) {
   const sr = await fetch(`https://api-v2.soundcloud.com/search/tracks?q=${encodeURIComponent(query)}&limit=${limit}&client_id=${cid}`, { headers: { 'User-Agent': 'Mozilla/5.0' } });
   if (sr.status === 401 || sr.status === 403) return { authFailed: true, col: [] };
@@ -883,6 +923,26 @@ async function fetchDirectSoundCloudStreamServer(scUrlOrId, queryFallback, meta 
         for (const pick of rankSoundCloudSearchHits(pool, info).slice(0, 4)) {
           const u = await resolveScTranscodingServer(pick, cid);
           if (u && !u.includes('/preview/') && !u.includes('cf-preview-media')) return u;
+        }
+        // No original: play the closest version and tell the listener.
+        for (const pick of rankSoundCloudFallbackHits(pool, info).slice(0, 4)) {
+          const u = await resolveScTranscodingServer(pick, cid);
+          if (u && !u.includes('/preview/') && !u.includes('cf-preview-media')) {
+            rememberFallbackNote(u, 'Original unavailable \u2014 playing the closest version');
+            return u;
+          }
+        }
+        // Nothing full-length at all: the official 30s preview is still the
+        // original recording, so play that rather than fail.
+        const official = pool.find((t) => t && (t.policy === 'SNIP' || t.snipped)
+          && scNormalize(t.title).includes(info.core)
+          && (!info.mainArtist || scNormalize((t.user && t.user.username) || '').includes(info.mainArtist)));
+        if (official) {
+          const u = await resolveScTranscodingServer(official, cid, true);
+          if (u) {
+            rememberFallbackNote(u, 'Only a 30-second preview is available');
+            return u;
+          }
         }
       }
       break;
@@ -7967,6 +8027,10 @@ function webRewriteJson(pathname, text) {
   if (pathname === '/api/stream-info') {
     try {
       const data = JSON.parse(out);
+      if (data && data.success && data.streamUrl && scFallbackNotes.has(data.streamUrl)) {
+        data.notice = scFallbackNotes.get(data.streamUrl);
+        out = JSON.stringify(data);
+      }
       if (data && data.success && !data.isHls && !data.isLocal && data.proxyUrl && /^https?:/i.test(data.streamUrl || '')) {
         data.directUrl = data.streamUrl;
         data.streamUrl = data.proxyUrl;
@@ -8978,7 +9042,7 @@ function startServer(port = PORT) {
   });
 }
 
-module.exports = { startServer, handleRequest, rankSoundCloudSearchHits, scCoreTitle, scMainArtist, PORT, getServerToken, fetchLyricsDirect, fetchLrcLib, fetchGeniusLyrics, fetchNetEaseWords, fetchKugouLyrics, fetchMusixmatchLyrics, fetchNeteaseLyrics, fetchSoundCloudSearch, ytmusicSearch, parseYrc };
+module.exports = { startServer, handleRequest, rankSoundCloudSearchHits, rankSoundCloudFallbackHits, scCoreTitle, scMainArtist, PORT, getServerToken, fetchLyricsDirect, fetchLrcLib, fetchGeniusLyrics, fetchNetEaseWords, fetchKugouLyrics, fetchMusixmatchLyrics, fetchNeteaseLyrics, fetchSoundCloudSearch, ytmusicSearch, parseYrc };
 
 if (require.main === module) {
   startServer();

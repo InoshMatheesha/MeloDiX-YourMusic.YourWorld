@@ -8,7 +8,7 @@ const os = require('os');
 const path = require('path');
 
 process.env.MOODEX_DATA_DIR = process.env.MOODEX_DATA_DIR || path.join(os.tmpdir(), 'moodex-test-sc-match');
-const { rankSoundCloudSearchHits, scCoreTitle, scMainArtist } = require('../src/server/server');
+const { rankSoundCloudSearchHits, rankSoundCloudFallbackHits, scCoreTitle, scMainArtist } = require('../src/server/server');
 
 const hit = (id, title, user, seconds, policy = 'ALLOW') => ({ id, title, user: { username: user }, duration: seconds * 1000, policy });
 
@@ -67,4 +67,30 @@ test('an edit is allowed when that is what was asked for', () => {
     hit(1, 'blinding lights - the weeknd (slowed & reverbed)', 'yaromilov', 221)
   ]);
   assert.strictEqual(ranked.length, 1);
+});
+
+// When no original exists the web build plays the closest version instead of
+// failing: same song first, least-altered kind of version, closest length.
+function fallback(title, artist, expectedSec, pool) {
+  const info = { core: scCoreTitle(title, artist), mainArtist: scMainArtist(artist), expectedSec, query: `${title} ${artist} - ${title}` };
+  return rankSoundCloudFallbackHits(pool, info);
+}
+
+test('fallback prefers a same-length cover over remixes, remakes and mashups', () => {
+  const ranked = fallback('Blinding Lights', 'The Weeknd', 200, [
+    hit(1, 'blinding lights x big poppa', 'kanye south', 206),
+    hit(2, 'The Weeknd - Blinding lights (Lee Wright Remake)', 'Lee Wright', 159),
+    hit(3, 'Blinding Lights - The Weeknd (SPARKZ Remix)', 'SPARKZ', 204),
+    hit(4, 'The Weeknd - Blinding Lights | Cover by Sapphire', 'SAPPHIRE', 200),
+    hit(5, 'blinding lights - the weeknd (slowed & reverbed)', 'yaromilov', 221)
+  ]);
+  assert.strictEqual(ranked[0].id, 4);
+  assert.strictEqual(ranked[ranked.length - 1].id, 1, 'mashups come last');
+});
+
+test('fallback never offers a different song or a 30s preview', () => {
+  assert.deepStrictEqual(fallback('Hinahena Wala', 'Muthuja Sanahas & Santhur', 225, [
+    hit(1, 'Hinahena Wala', 'Muthuja Sanahas', 30, 'SNIP'),
+    hit(2, 'Numba Hinahuna Diha_Bala - Peshala Gamage', 'sinhanadanet', 207)
+  ]), []);
 });

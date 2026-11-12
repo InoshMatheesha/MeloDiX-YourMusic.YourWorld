@@ -4347,6 +4347,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const data = await res.json();
         if (data && data.success && data.streamUrl) {
           nextTrack._preloadedStreamUrl = data.streamUrl;
+          nextTrack._streamNotice = data.notice || '';
         }
       } catch (_) { }
     }
@@ -4514,6 +4515,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
       if (track._preloadedStreamUrl) {
         if (currentToken !== state.loadToken) return;
+        if (track._streamNotice) showToast(track._streamNotice, 'info');
         if (hlsInstance) {
           try { hlsInstance.destroy(); } catch (_) { }
           hlsInstance = null;
@@ -4582,6 +4584,10 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
 
       track._preloadedStreamUrl = data.streamUrl;
+      // The server says when it is standing in another version for a song
+      // whose original it could not reach (web build).
+      track._streamNotice = data.notice || '';
+      if (data.notice) showToast(data.notice, 'info');
       // Chart entries (iTunes ids) are matched to a YouTube video on the
       // server; keep that id so a dead link can be re-resolved later.
       if (data.resolvedId && /^[A-Za-z0-9_-]{11}$/.test(data.resolvedId)) track._ytId = data.resolvedId;
