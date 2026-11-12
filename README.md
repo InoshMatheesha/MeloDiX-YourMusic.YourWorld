@@ -20,7 +20,7 @@
     <img src="https://img.shields.io/badge/Download-6750A4?style=for-the-badge&logo=download&logoColor=white" height="40" alt="Download">
   </a>
   &nbsp;
-  <a href="https://melodix-you-music-app.vercel.app">
+  <a href="https://melodix-your-music-app.vercel.app">
     <img src="https://img.shields.io/badge/Open_web_app-1F2328?style=for-the-badge&logo=googlechrome&logoColor=white" height="40" alt="Open the web app">
   </a>
 </p>
@@ -55,7 +55,7 @@ There is no account, no sign-up, and no telemetry. Your playlists, settings and
 downloads stay on your machine.
 
 On a phone or any computer without installing anything, use the web app:
-**[melodix-you-music-app.vercel.app](https://melodix-you-music-app.vercel.app)**. It can be added to your home screen.
+**[melodix-your-music-app.vercel.app](https://melodix-your-music-app.vercel.app)**. It can be added to your home screen.
 
 > **Note on streaming sources.** Melodix searches public catalogues and plays
 > publicly available audio streams. It is a player, not a subscription service, and
@@ -283,7 +283,7 @@ moodex lyrics   # stream the current track's lyrics to your terminal
 
 ## Web app
 
-**Open it:** [melodix-you-music-app.vercel.app](https://melodix-you-music-app.vercel.app)
+**Open it:** [melodix-your-music-app.vercel.app](https://melodix-your-music-app.vercel.app)
 
 The same app runs in the browser on Windows, macOS, Linux, Android and iOS, and can
 be installed to the home screen (PWA). On a phone it has its own layout: search at
