@@ -1,0 +1,14 @@
+# Rust build output
+/src-tauri/target/
+/src-tauri/gen/schemas/
+
+# Node
+/node_modules/
+
+# Editor / OS noise
+.vscode/
+Thumbs.db
+desktop.ini
+
+# Local build logs
+*.log

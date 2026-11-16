@@ -1,0 +1,10 @@
+# Keep LF line endings regardless of a contributor's git autocrlf setting,
+# so Rust/JS diffs stay clean on Windows.
+* text=auto eol=lf
+# Bundled Node runtime for the sidecar: a large binary, kept in LFS instead
+# of plain git history.
+sidecar/runtime/node.exe filter=lfs diff=lfs merge=lfs -text
+*.png binary
+*.ico binary
+*.gif binary
+*.ttf binary

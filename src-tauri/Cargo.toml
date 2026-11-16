@@ -1,0 +1,37 @@
+[package]
+name = "melodix"
+version = "2.0.2"
+description = "Melodix - Your Music. Your World."
+authors = ["Inosh Matheesha"]
+edition = "2021"
+rust-version = "1.77"
+
+[lib]
+name = "melodix_lib"
+crate-type = ["lib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-single-instance = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rfd = "0.15"
+open = "5"
+dirs = "5"
+rand = "0.8"
+ureq = { version = "2", features = ["tls", "json"] }
+
+[target.'cfg(windows)'.dependencies]
+webview2-com = "0.39"
+windows-core = "0.62"
+winreg = "0.56"
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true
