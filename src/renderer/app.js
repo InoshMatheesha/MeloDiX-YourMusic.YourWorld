@@ -3243,7 +3243,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                   }
                 }
                 if (isConnected && miniHeights) {
-                  drawConnectedLiquidWave(miniCtx, 52, 24, miniHeights, '#ffffff');
+                  drawVizStyle(miniCtx, 52, 24, miniHeights, '#ffffff', currentVizStyle);
                 }
               }
             }
@@ -3307,7 +3307,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (isConn) {
                   tvkCtx.save();
                   tvkCtx.translate(startX, 0);
-                  drawConnectedLiquidWave(tvkCtx, usedWidth, h, tvkSmoothedHeights, '#ffffff');
+                  drawVizStyle(tvkCtx, usedWidth, h, tvkSmoothedHeights, '#ffffff', currentVizStyle);
                   tvkCtx.restore();
                 }
               } else if (tvkSmoothedHeights) {
@@ -3339,7 +3339,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (isConn) {
                   tvkCtx.save();
                   tvkCtx.translate(startX, 0);
-                  drawConnectedLiquidWave(tvkCtx, usedWidth, h, tvkSmoothedHeights, '#ffffff');
+                  drawVizStyle(tvkCtx, usedWidth, h, tvkSmoothedHeights, '#ffffff', currentVizStyle);
                   tvkCtx.restore();
                 }
                 if (!anyActive) {
@@ -6756,11 +6756,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (tvkOutputInterval) clearInterval(tvkOutputInterval);
     hookTvkDeviceChange();
     tvkOutputInterval = setInterval(updateTvkOutput, 30000);
+    if (window.MoodexMiniQueue) window.MoodexMiniQueue.onFullscreenChange();
   }
 
   function closeTvKaraoke() {
     if (!state.isTvKaraokeOpen || !el.tvKaraoke) return;
     state.isTvKaraokeOpen = false;
+    if (window.MoodexMiniQueue) window.MoodexMiniQueue.onFullscreenChange();
     syncTvkAmbientPlayback();
     clearTimeout(tvIdleTimer);
     if (tvkOutputInterval) {
@@ -14133,7 +14135,47 @@ document.addEventListener('DOMContentLoaded', async () => {
       localStorage.setItem('moodex_volume', String(state.volume));
       localStorage.setItem('moodex_muted', state.isMuted ? '1' : '0');
     } catch (e) { }
+    syncTvkVolumeUI();
   }
+
+  // Full-screen player volume: mirrors the playbar control, which stays the
+  // single source of truth (state, audio engine, persistence).
+  function syncTvkVolumeUI() {
+    const slider = document.getElementById('tvk-volume-slider');
+    if (slider) {
+      const v = state.isMuted ? 0 : state.volume;
+      if (slider.value !== String(v)) slider.value = String(v);
+    }
+    const pct = document.getElementById('tvk-volume-pct');
+    if (pct) pct.textContent = `${state.isMuted ? 0 : Math.round(state.volume * 100)}%`;
+    const on = document.getElementById('tvk-volume-icon');
+    const off = document.getElementById('tvk-volume-muted-icon');
+    const silent = state.isMuted || state.volume <= 0;
+    if (on) on.classList.toggle('hidden', silent);
+    if (off) off.classList.toggle('hidden', !silent);
+  }
+  (function initTvkVolume() {
+    const slider = document.getElementById('tvk-volume-slider');
+    const btn = document.getElementById('btn-tvk-volume-mute');
+    const row = document.getElementById('tvk-volume-row');
+    const setVolume = (v) => {
+      if (!el.volumeSlider) return;
+      el.volumeSlider.value = String(Math.max(0, Math.min(1, v)));
+      el.volumeSlider.dispatchEvent(new Event('input'));
+    };
+    if (slider) slider.addEventListener('input', (e) => setVolume(parseFloat(e.target.value)));
+    if (btn) btn.addEventListener('click', () => {
+      if (!state.isMuted && state.volume <= 0) setVolume(0.5);   // unmuting at 0 would stay silent
+      else if (el.btnVolumeMute) el.btnVolumeMute.click();
+    });
+    if (row) row.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const base = state.isMuted ? 0 : state.volume;
+      setVolume(Math.round((base + (e.deltaY < 0 ? 0.05 : -0.05)) * 100) / 100);
+    }, { passive: false });
+    syncTvkVolumeUI();
+  })();
 
   if (el.volumeSlider) {
     el.volumeSlider.value = String(state.volume);
@@ -14200,6 +14242,328 @@ document.addEventListener('DOMContentLoaded', async () => {
       renderQueueView();
     });
   }
+
+  // Mini queue window. One component, two homes: a floating card above the
+  // playbar, or a split-screen panel docked on the right of the full-screen
+  // player. While open it re-renders whenever the queue or the playing track
+  // changes (cheap signature check, so no hooks into every queue mutation).
+  const miniQueue = (function initMiniQueue() {
+    const ICON_PLAY = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5z"/></svg>';
+    const ICON_X = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+    const ICON_GRIP = '<svg width="12" height="16" viewBox="0 0 12 16" fill="currentColor"><circle cx="3" cy="3" r="1.4"/><circle cx="9" cy="3" r="1.4"/><circle cx="3" cy="8" r="1.4"/><circle cx="9" cy="8" r="1.4"/><circle cx="3" cy="13" r="1.4"/><circle cx="9" cy="13" r="1.4"/></svg>';
+    const ICON_NOTE = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>';
+    const MAX_ROWS = 250;
+
+    const root = document.createElement('aside');
+    root.className = 'mini-queue';
+    root.id = 'mini-queue';
+    root.setAttribute('role', 'dialog');
+    root.setAttribute('aria-label', t('Queue'));
+    root.innerHTML = `
+      <header class="mq-head">
+        <div class="mq-head-text">
+          <span class="mq-title">${escapeHtml(t('Queue'))}</span>
+          <span class="mq-sub" id="mq-sub"></span>
+        </div>
+        <button type="button" class="mq-icon-btn mq-clear" id="mq-clear" title="${escapeHtml(t('Clear up next'))}">${escapeHtml(t('Clear'))}</button>
+        <button type="button" class="mq-icon-btn mq-close" id="mq-close" title="${escapeHtml(t('Close'))}" aria-label="${escapeHtml(t('Close'))}">${ICON_X}</button>
+      </header>
+      <div class="mq-now" id="mq-now"></div>
+      <div class="mq-section-label" id="mq-next-label"></div>
+      <div class="mq-list" id="mq-list"></div>
+      <footer class="mq-foot" id="mq-foot"></footer>`;
+    document.body.appendChild(root);
+
+    const $ = (id) => root.querySelector('#' + id);
+    const elNow = $('mq-now'), elList = $('mq-list'), elSub = $('mq-sub'), elFoot = $('mq-foot'), elNextLabel = $('mq-next-label');
+    const toggles = () => document.querySelectorAll('.mq-toggle');
+    let isOpen = false;
+    let poll = 0;
+    let lastSig = '';
+    let lastFoot = '';
+
+    function currentIndex() {
+      const q = state.queue || [];
+      const i = state.queueIndex;
+      if (typeof i === 'number' && i >= 0 && i < q.length && (!state.currentTrack || isSameTrack(q[i], state.currentTrack))) return i;
+      return state.currentTrack ? q.findIndex(tr => isSameTrack(tr, state.currentTrack)) : -1;
+    }
+
+    function signature() {
+      const q = state.queue || [];
+      const cur = state.currentTrack;
+      return [q.length, state.queueIndex, cur ? (cur.id || cur.title) : '', q[0] && q[0].id, q[q.length - 1] && q[q.length - 1].id, state.isPlaying ? 1 : 0].join('|');
+    }
+
+    function fmtLong(sec) {
+      const m = Math.round(sec / 60);
+      if (m < 60) return `${m} min`;
+      return `${Math.floor(m / 60)} hr ${m % 60} min`;
+    }
+
+    function footText() {
+      const q = state.queue || [];
+      const ci = currentIndex();
+      let remaining = 0;
+      for (let i = ci + 1; i < q.length; i++) remaining += Number(q[i].duration) || 0;
+      if (state.currentTrack && el.nativeAudio) {
+        const d = Number(el.nativeAudio.duration) || Number(state.currentTrack.duration) || 0;
+        remaining += Math.max(0, d - (el.nativeAudio.currentTime || 0));
+      }
+      if (remaining < 1) return '';
+      const end = new Date(Date.now() + remaining * 1000);
+      const at = end.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+      return `${t('Queue ends at')} <b>${escapeHtml(at)}</b> · ${escapeHtml(fmtLong(remaining))} ${escapeHtml(t('left'))}`;
+    }
+
+    function thumbHtml(track, cls) {
+      const src = getTrackThumbUrl(track);
+      return `<div class="${cls}"><span class="mq-thumb-fallback">${ICON_NOTE}</span>${src ? `<img src="${escapeHtml(src)}" alt="" decoding="async" loading="lazy" onerror="this.remove()">` : ''}</div>`;
+    }
+
+    function render() {
+      lastSig = signature();
+      const q = state.queue || [];
+      const ci = currentIndex();
+      const cur = state.currentTrack;
+
+      if (cur) {
+        elNow.innerHTML = `
+          <div class="mq-now-card${state.isPlaying ? ' is-playing' : ''}">
+            ${thumbHtml(cur, 'mq-now-thumb')}
+            <div class="mq-now-info">
+              <span class="mq-eyebrow">${escapeHtml(t('Now playing'))}</span>
+              <span class="mq-now-title">${escapeHtml(cur.title || 'untitled')}</span>
+              <span class="mq-now-artist">${escapeHtml(cur.artist || '')}</span>
+            </div>
+            <span class="mq-eq" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+          </div>`;
+      } else {
+        elNow.innerHTML = '';
+      }
+
+      const start = ci + 1;
+      const upcoming = q.length - start;
+      elSub.textContent = upcoming > 0 ? `${upcoming} ${upcoming === 1 ? t('song up next') : t('songs up next')}` : '';
+      elNextLabel.textContent = upcoming > 0 ? t('Next up') : '';
+      $('mq-clear').hidden = upcoming <= 0;
+
+      if (upcoming <= 0) {
+        elList.innerHTML = `
+          <div class="mq-empty">
+            <div class="mq-empty-icon">${ICON_NOTE}</div>
+            <div class="mq-empty-title">${escapeHtml(t('Nothing up next'))}</div>
+            <div class="mq-empty-hint">${escapeHtml(t('Add songs to the queue and they will show up here.'))}</div>
+          </div>`;
+      } else {
+        const frag = document.createDocumentFragment();
+        const end = Math.min(q.length, start + MAX_ROWS);
+        for (let i = start; i < end; i++) {
+          const tr = q[i];
+          const row = document.createElement('div');
+          row.className = 'mq-row';
+          row.draggable = true;
+          row.dataset.idx = String(i);
+          row.style.setProperty('--mq-delay', `${Math.min(i - start, 12) * 22}ms`);
+          row.innerHTML = `
+            <span class="mq-grip" aria-hidden="true">${ICON_GRIP}</span>
+            <div class="mq-row-thumb-wrap">${thumbHtml(tr, 'mq-row-thumb')}<span class="mq-row-play">${ICON_PLAY}</span></div>
+            <div class="mq-row-info">
+              <span class="mq-row-title">${escapeHtml(tr.title || 'untitled')}</span>
+              <span class="mq-row-artist">${escapeHtml(tr.artist || '')}</span>
+            </div>
+            <span class="mq-row-dur">${tr.duration ? formatDuration(tr.duration) : ''}</span>
+            <button type="button" class="mq-row-remove" title="${escapeHtml(t('Remove from queue'))}" aria-label="${escapeHtml(t('Remove from queue'))}">${ICON_X}</button>`;
+          frag.appendChild(row);
+        }
+        elList.innerHTML = '';
+        elList.appendChild(frag);
+        if (q.length > end) {
+          const more = document.createElement('div');
+          more.className = 'mq-more';
+          more.textContent = `+ ${q.length - end} ${t('more')}`;
+          elList.appendChild(more);
+        }
+      }
+      lastFoot = footText();
+      elFoot.innerHTML = lastFoot;
+      elFoot.hidden = !lastFoot;
+    }
+
+    function tick() {
+      if (!isOpen) return;
+      if (signature() !== lastSig) { render(); return; }
+      const f = footText();
+      if (f !== lastFoot) { lastFoot = f; elFoot.innerHTML = f; elFoot.hidden = !f; }
+      const card = elNow.querySelector('.mq-now-card');
+      if (card) card.classList.toggle('is-playing', !!state.isPlaying);
+    }
+
+    // Floating card sits just above the playbar, right-aligned to the button.
+    function placeFloating() {
+      if (state.isTvKaraokeOpen) return;
+      const bar = el.playbar || document.querySelector('.playbar');
+      const btn = document.getElementById('btn-toggle-mini-queue');
+      const barTop = bar ? bar.getBoundingClientRect().top : window.innerHeight - 90;
+      root.style.setProperty('--mq-bottom', `${Math.max(12, window.innerHeight - barTop + 12)}px`);
+      let right = 16;
+      if (btn && btn.offsetParent) {
+        const r = btn.getBoundingClientRect();
+        right = Math.max(12, window.innerWidth - (r.left + r.width / 2) - 40);
+      }
+      right = Math.min(right, Math.max(12, window.innerWidth - 380));
+      root.style.setProperty('--mq-right', `${right}px`);
+    }
+
+    function mount() {
+      const tv = el.tvKaraoke || document.getElementById('tv-karaoke');
+      const docked = !!(state.isTvKaraokeOpen && tv);
+      const host = docked ? tv : document.body;
+      if (root.parentElement !== host) host.appendChild(root);
+      root.classList.toggle('mq-docked', docked);
+      root.classList.toggle('mq-floating', !docked);
+      if (tv) tv.classList.toggle('tvk-queue-open', docked && isOpen);
+      if (!docked) placeFloating();
+      // The full-screen layout width changed: let the canvases re-measure.
+      if (docked && typeof resizeCanvases === 'function') setTimeout(resizeCanvases, 460);
+    }
+
+    function syncToggles() {
+      toggles().forEach(b => {
+        b.classList.toggle('active', isOpen);
+        b.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+      });
+    }
+
+    function open() {
+      isOpen = true;
+      mount();
+      render();
+      root.classList.remove('mq-closing');
+      root.classList.add('open');
+      syncToggles();
+      clearInterval(poll);
+      poll = setInterval(tick, 600);
+      const curRow = elList.querySelector('.mq-row');
+      if (curRow) elList.scrollTop = 0;
+    }
+
+    function close() {
+      if (!isOpen) return;
+      isOpen = false;
+      clearInterval(poll);
+      poll = 0;
+      root.classList.remove('open');
+      root.classList.add('mq-closing');
+      setTimeout(() => { if (!isOpen) root.classList.remove('mq-closing'); }, 260);
+      const tv = el.tvKaraoke || document.getElementById('tv-karaoke');
+      if (tv && tv.classList.contains('tvk-queue-open')) {
+        tv.classList.remove('tvk-queue-open');
+        if (typeof resizeCanvases === 'function') setTimeout(resizeCanvases, 460);
+      }
+      syncToggles();
+    }
+
+    function toggle() { isOpen ? close() : open(); }
+
+    document.addEventListener('click', (e) => {
+      const tg = e.target.closest('.mq-toggle');
+      if (tg) { e.stopPropagation(); toggle(); return; }
+      // Floating card closes on an outside click; the docked panel stays.
+      if (isOpen && !state.isTvKaraokeOpen && !root.contains(e.target) && !e.target.closest('.track-context-menu, .modal-backdrop')) close();
+    }, true);
+
+    window.addEventListener('keydown', (e) => {
+      if (isOpen && (e.key === 'Escape' || e.code === 'Escape')) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        close();
+      }
+    }, true);
+
+    window.addEventListener('resize', () => { if (isOpen && !state.isTvKaraokeOpen) placeFloating(); });
+
+    $('mq-close').addEventListener('click', close);
+    $('mq-clear').addEventListener('click', () => {
+      const ci = currentIndex();
+      state.queue = ci >= 0 ? state.queue.slice(0, ci + 1) : [];
+      if (ci < 0) state.queueIndex = -1;
+      state.isRadioQueue = false;
+      updateQueueBadge();
+      renderQueueView();
+      render();
+    });
+
+    elList.addEventListener('click', (e) => {
+      const row = e.target.closest('.mq-row');
+      if (!row) return;
+      const idx = parseInt(row.dataset.idx, 10);
+      if (Number.isNaN(idx)) return;
+      if (e.target.closest('.mq-row-remove')) {
+        row.classList.add('mq-row-leaving');
+        setTimeout(() => { removeTrackFromQueue(idx); render(); }, 160);
+        return;
+      }
+      const tr = state.queue[idx];
+      if (tr) playTrack(tr, idx);
+    });
+
+    // Drag to reorder the upcoming songs.
+    let dragFrom = -1;
+    elList.addEventListener('dragstart', (e) => {
+      const row = e.target.closest('.mq-row');
+      if (!row) return;
+      dragFrom = parseInt(row.dataset.idx, 10);
+      row.classList.add('mq-dragging');
+      try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(dragFrom)); } catch (_) { }
+    });
+    elList.addEventListener('dragover', (e) => {
+      if (dragFrom < 0) return;
+      e.preventDefault();
+      const row = e.target.closest('.mq-row');
+      elList.querySelectorAll('.mq-drop-above, .mq-drop-below').forEach(r => r.classList.remove('mq-drop-above', 'mq-drop-below'));
+      if (!row || row.classList.contains('mq-dragging')) return;
+      const r = row.getBoundingClientRect();
+      row.classList.add(e.clientY < r.top + r.height / 2 ? 'mq-drop-above' : 'mq-drop-below');
+    });
+    const endDrag = () => {
+      dragFrom = -1;
+      elList.querySelectorAll('.mq-dragging, .mq-drop-above, .mq-drop-below').forEach(r => r.classList.remove('mq-dragging', 'mq-drop-above', 'mq-drop-below'));
+    };
+    elList.addEventListener('dragend', endDrag);
+    elList.addEventListener('drop', (e) => {
+      e.preventDefault();
+      const row = e.target.closest('.mq-row');
+      const from = dragFrom;
+      const below = row && row.classList.contains('mq-drop-below');
+      endDrag();
+      if (!row || from < 0) return;
+      let to = parseInt(row.dataset.idx, 10) + (below ? 1 : 0);
+      if (from < to) to--;
+      const q = state.queue;
+      if (Number.isNaN(to) || from === to || from >= q.length || to < 0 || to >= q.length) return;
+      const [moved] = q.splice(from, 1);
+      q.splice(to, 0, moved);
+      if (state.queueIndex === from) state.queueIndex = to;
+      else if (from < state.queueIndex && to >= state.queueIndex) state.queueIndex--;
+      else if (from > state.queueIndex && to <= state.queueIndex) state.queueIndex++;
+      renderQueueView();
+      render();
+    });
+
+    // Small count on the playbar button, so the queue is discoverable.
+    setInterval(() => {
+      const badge = document.getElementById('mini-queue-badge');
+      if (!badge) return;
+      const n = Math.max(0, (state.queue || []).length - currentIndex() - 1);
+      const txt = n > 99 ? '99+' : String(n);
+      if (badge.textContent !== txt) badge.textContent = txt;
+      badge.classList.toggle('hidden', n <= 0 || isOpen);
+    }, 1500);
+
+    return { open, close, toggle, onFullscreenChange() { if (isOpen) { mount(); render(); } } };
+  })();
+  window.MoodexMiniQueue = miniQueue;
 
   if (el.playlistSearchInput) {
     el.playlistSearchInput.addEventListener('input', () => {
