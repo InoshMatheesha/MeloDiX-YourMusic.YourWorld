@@ -4,16 +4,17 @@ const path = require('path');
 
 const IS_WIN = process.platform === 'win32';
 
+// Matches the Rust shell: %LOCALAPPDATA%\Melodix\Data.
 const DEFAULT_DATA_DIR = IS_WIN
-  ? path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local'), 'Moodex')
+  ? path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local'), 'Melodix', 'Data')
   : process.platform === 'darwin'
-  ? path.join(os.homedir(), 'Library', 'Application Support', 'Moodex')
+  ? path.join(os.homedir(), 'Library', 'Application Support', 'Melodix')
   : path.join(os.homedir(), '.cache', 'devsize');
 
 const CONFIG_DIR = IS_WIN
-  ? path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local'), 'Moodex')
+  ? path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local'), 'Melodix', 'Data')
   : process.platform === 'darwin'
-  ? path.join(os.homedir(), 'Library', 'Application Support', 'Moodex')
+  ? path.join(os.homedir(), 'Library', 'Application Support', 'Melodix')
   : path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), 'devsize');
 const CONFIG_PATH = path.join(CONFIG_DIR, 'config.json');
 
@@ -74,7 +75,9 @@ const METADATA_PATH = path.join(DATA_DIR, 'metadata.json');
 const LIBRARY_DIR = path.join(DATA_DIR, 'library');
 const LIBRARY_PATH = path.join(DATA_DIR, 'library.json');
 const BIN_DIR = path.join(DATA_DIR, 'bin');
-const TUTORIAL_MARKER = IS_WIN ? 'C:\\Moodex\\.moodextutorial' : path.join(os.homedir(), '.moodextutorial');
+// Old builds wrote this marker to C:\Moodex; it is still honoured but never written again.
+const LEGACY_TUTORIAL_MARKER = IS_WIN ? 'C:\\Moodex\\.moodextutorial' : path.join(os.homedir(), '.moodextutorial');
+const TUTORIAL_MARKER = path.join(DATA_DIR, '.moodextutorial');
 const TUTORIAL_MARKER_FALLBACK = path.join(DATA_DIR, '.moodextutorial');
 const STARTUP_PATH = path.join(DATA_DIR, 'startup.json');
 function readStartupConfig() { try { return JSON.parse(fs.readFileSync(STARTUP_PATH, 'utf8')) || {}; } catch (e) { return {}; } }
@@ -85,7 +88,7 @@ function writeStartupConfig(patch) {
     return true;
   } catch (e) { return false; }
 }
-function tutorialDone() { return fs.existsSync(TUTORIAL_MARKER) || fs.existsSync(TUTORIAL_MARKER_FALLBACK); }
+function tutorialDone() { return fs.existsSync(TUTORIAL_MARKER) || fs.existsSync(TUTORIAL_MARKER_FALLBACK) || fs.existsSync(LEGACY_TUTORIAL_MARKER); }
 function markTutorialDone() {
   for (const file of [TUTORIAL_MARKER, TUTORIAL_MARKER_FALLBACK]) {
     try { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, '1'); return true; } catch (e) {}

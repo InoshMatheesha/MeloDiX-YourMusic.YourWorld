@@ -1021,7 +1021,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     const s = hsl.s || 60;
     const intensityFactor = (typeof intensity === 'number' ? intensity : 100) / 100;
     const root = document.documentElement;
-    const applyBgIntensity = getAdv('intensity_bg', false);
+    // Album always tints its surfaces with the cover; other themes follow the switch.
+    const albumMode = state.themeMode === 'auto';
+    const applyBgIntensity = getAdv('intensity_bg', false) || albumMode;
 
     const setToken = (prop, val) => {
       if (SURFACE_TOKENS.has(prop)) {
@@ -1042,7 +1044,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const styleKey = state.paletteStyle || 'classic';
     const style = PALETTE_STYLES[styleKey] || PALETTE_STYLES.classic;
-    const surfSat = applyBgIntensity ? Math.min(85, Math.round(s * intensityFactor * (style.surfSatScale * 2.4))) : 0;
+    const surfSat = applyBgIntensity ? Math.min(albumMode ? 42 : 85, Math.max(albumMode ? 14 : 0, Math.round(s * intensityFactor * (style.surfSatScale * 2.4)))) : 0;
 
     const hSec = (h + style.secHueShift) % 360;
     const hTert = (h + style.tertHueShift) % 360;
@@ -1775,6 +1777,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       const h2 = (hsl.h + 40) % 360;
       resolvedAccent2 = hslToHex(h2, hsl.s, hsl.l);
     }
+    // Second colour for the Album glow.
+    document.documentElement.style.setProperty('--accent-raw2', resolvedAccent2);
 
     const mono = intensity < 8;
     updateMeshGradient(mono ? '#9E9E9E' : hexColor, mono ? '#757575' : resolvedAccent2, mode);
@@ -10077,6 +10081,15 @@ document.addEventListener('DOMContentLoaded', async () => {
           if (typeof renderQueueView === 'function') renderQueueView();
         }
       });
+    } else if (state.currentView === 'downloads' && track.isDownload) {
+      items.push({ divider: true });
+      items.push({
+        id: 'delete-download',
+        danger: true,
+        label: 'Delete download',
+        icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>',
+        action: () => deleteDownloadedTracks([track], options.row ? [options.row] : [])
+      });
     } else if (state.currentView === 'local') {
       items.push({ divider: true });
       items.push({
@@ -10601,7 +10614,11 @@ document.addEventListener('DOMContentLoaded', async () => {
       <button class="btn-icon-pill btn-row-add-playlist" title="add to playlist">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
       </button>
-      ${(context === 'local' || track.platform === 'local') ? `
+      ${context === 'downloads' ? `
+      <button class="btn-icon-pill btn-row-delete-download delete-btn" title="Delete download" aria-label="Delete download">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+      <span class="dl-del-confirm">Delete?</span>
+      </button>` : (context === 'local' || track.platform === 'local') ? `
       <button class="btn-icon-pill btn-row-remove-local btn-remove-local delete-btn" title="Remove from library">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
       </button>` : `
@@ -10769,6 +10786,24 @@ document.addEventListener('DOMContentLoaded', async () => {
       btnRemLocal.addEventListener('click', (e) => {
         e.stopPropagation();
         removeTracksFromLocalLibrary([track]);
+      });
+    }
+
+    // Downloads: first click arms the button, a second click within 3s deletes.
+    const btnDelDl = row.querySelector('.btn-row-delete-download');
+    if (btnDelDl) {
+      let armTimer = null;
+      btnDelDl.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (!btnDelDl.classList.contains('is-armed')) {
+          btnDelDl.classList.add('is-armed');
+          btnDelDl.title = 'Click again to delete';
+          clearTimeout(armTimer);
+          armTimer = setTimeout(() => { btnDelDl.classList.remove('is-armed'); btnDelDl.title = 'Delete download'; }, 3000);
+          return;
+        }
+        clearTimeout(armTimer);
+        deleteDownloadedTracks([track], [row]);
       });
     }
 
@@ -13677,6 +13712,83 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   // =====================================================================
+  // Sidebar studio (Settings > Theme > Sidebar): layout, labels, highlight,
+  // surface and logo. "Floating" is the old Advanced > Classic sidebar.
+  // =====================================================================
+  const sbRead = (k, fallback, allowed) => {
+    try { const v = localStorage.getItem(k); return allowed.includes(v) ? v : fallback; } catch (_) { return fallback; }
+  };
+  const sbPrefs = {
+    layout: sbRead('moodex_sb_layout', getAdv('classic_sidebar', false) ? 'floating' : 'unified', ['unified', 'detached', 'floating']),
+    active: sbRead('moodex_sb_active', 'pill', ['pill', 'soft', 'line']),
+    surface: sbRead('moodex_sb_surface', 'match', ['match', 'tint', 'glass']),
+    brand: sbRead('moodex_sb_brand', '1', ['1', '0']) === '1'
+  };
+
+  function paintSidebarStudio() {
+    document.querySelectorAll('#sb-layouts .sb-layout').forEach((b) => {
+      const on = b.dataset.sbLayout === sbPrefs.layout;
+      b.classList.toggle('active', on);
+      b.setAttribute('aria-checked', on ? 'true' : 'false');
+    });
+    const sidebar = el.sidebarEl || document.getElementById('sidebar');
+    const labels = sidebar && sidebar.classList.contains('rail-collapsed') ? 'icons' : 'labels';
+    const segVal = { 'sb-seg-labels': labels, 'sb-seg-active': sbPrefs.active, 'sb-seg-surface': sbPrefs.surface };
+    Object.keys(segVal).forEach((id) => {
+      document.querySelectorAll(`#${id} button`).forEach((b) => b.classList.toggle('active', b.dataset.v === segVal[id]));
+    });
+    const brandBtn = document.getElementById('btn-sb-brand');
+    if (brandBtn) brandBtn.classList.toggle('active', sbPrefs.brand);
+    // Floating is a compact rail with its own look, so the row options do not apply there.
+    document.querySelectorAll('.sb-prefs .setting-item').forEach((row, i) => row.classList.toggle('is-disabled', sbPrefs.layout === 'floating' && i !== 2));
+  }
+
+  function applySidebarPrefs(layoutChanged) {
+    const b = document.body;
+    b.classList.toggle('classic-sidebar', sbPrefs.layout === 'floating');
+    b.classList.toggle('sb-detached', sbPrefs.layout === 'detached');
+    b.dataset.sbActive = sbPrefs.active;
+    b.dataset.sbSurface = sbPrefs.surface;
+    b.classList.toggle('sb-no-brand', !sbPrefs.brand);
+    setAdv('classic_sidebar', sbPrefs.layout === 'floating');
+    paintSidebarStudio();
+    if (layoutChanged) {
+      setTimeout(() => {
+        if (typeof updateNavIndicator === 'function') updateNavIndicator(false);
+        if (typeof resizeCanvases === 'function') resizeCanvases();
+      }, 260);
+    }
+  }
+
+  function setSidebarPref(key, value) {
+    if (sbPrefs[key] === value) return;
+    sbPrefs[key] = value;
+    try { localStorage.setItem('moodex_sb_' + key, key === 'brand' ? (value ? '1' : '0') : value); } catch (_) { }
+    applySidebarPrefs(key === 'layout');
+  }
+
+  applySidebarPrefs(false);
+
+  const sbLayouts = document.getElementById('sb-layouts');
+  if (sbLayouts) {
+    sbLayouts.addEventListener('click', (e) => {
+      const card = e.target.closest('.sb-layout');
+      if (card) setSidebarPref('layout', card.dataset.sbLayout);
+    });
+  }
+  const sbSeg = (id, fn) => {
+    const g = document.getElementById(id);
+    if (g) g.addEventListener('click', (e) => { const btn = e.target.closest('button[data-v]'); if (btn) fn(btn.dataset.v); });
+  };
+  sbSeg('sb-seg-labels', (v) => { applyRailCollapsed(v === 'icons', true); paintSidebarStudio(); });
+  sbSeg('sb-seg-active', (v) => setSidebarPref('active', v));
+  sbSeg('sb-seg-surface', (v) => setSidebarPref('surface', v));
+  const sbBrandBtn = document.getElementById('btn-sb-brand');
+  if (sbBrandBtn) sbBrandBtn.addEventListener('click', () => setSidebarPref('brand', !sbPrefs.brand));
+  // The rail's own collapse button keeps the Labels choice in step.
+  if (el.btnRailToggle) el.btnRailToggle.addEventListener('click', () => setTimeout(paintSidebarStudio, 0));
+
+  // =====================================================================
   // Downloads view - what is actually cached on disk for offline playback
   // =====================================================================
   let downloadsLoading = false;
@@ -13736,6 +13848,30 @@ document.addEventListener('DOMContentLoaded', async () => {
     } finally {
       downloadsLoading = false;
     }
+  }
+
+  // Remove downloaded files from disk (Recycle Bin on Windows), folding the rows away first.
+  async function deleteDownloadedTracks(tracks, rows) {
+    const names = (tracks || []).map((t) => t && t.fileName).filter(Boolean);
+    if (!names.length || !state.serverPort) return;
+    (rows || []).forEach((r) => r && r.classList.add('dl-row-leaving'));
+    let result = null;
+    try {
+      const res = await fetch(`http://127.0.0.1:${state.serverPort}/api/downloads-delete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ names })
+      });
+      result = await res.json();
+    } catch (_) { }
+    if (!result || !result.deleted) {
+      (rows || []).forEach((r) => r && r.classList.remove('dl-row-leaving'));
+      showToast('Could not delete the file - it may be in use', 'error');
+      return;
+    }
+    const what = result.deleted === 1 ? `"${tracks[0].title || names[0]}"` : `${result.deleted} downloads`;
+    showToast(result.recycled ? `Moved ${what} to the Recycle Bin` : `Deleted ${what}`, 'success');
+    setTimeout(() => renderDownloadsView(true), 320);
   }
 
   if (el.btnRefreshDownloads) {
@@ -15629,6 +15765,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (id === state.themePreset) { syncThemeStudio(); return; }
     const apply = () => {
       state.themePreset = id;
+      // Set the mode too, or updateThemeFromState reads the old mode and undoes an Album pick.
+      state.themeMode = resolvePresetMode(id);
       // Each preset starts from its own default tone; the slider then fine-tunes it.
       state.themeBrightness = 50;
       try {
@@ -19352,7 +19490,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   (function initUpdateUI() {
     const api = window.electronAPI;
     const $ = (id) => document.getElementById(id);
-    let currentAppVersion = '2.0.6';
+    let currentAppVersion = '2.0.7';
     if (api && api.getAppVersion) {
       api.getAppVersion().then((v) => {
         if (v) {
@@ -22272,7 +22410,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (typeof showToast === 'function') showToast('No playlists to export', 'error');
       return;
     }
-    let appVer = '2.0.6';
+    let appVer = '2.0.7';
     try {
       if (window.electronAPI && window.electronAPI.getAppVersion) {
         const v = await window.electronAPI.getAppVersion();

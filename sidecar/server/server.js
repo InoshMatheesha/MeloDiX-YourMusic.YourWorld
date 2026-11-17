@@ -8787,6 +8787,52 @@ async function routeRequest(req, res) {
     return handleDownloadedTrack(req, res, name);
   }
 
+  // Delete downloaded files (Downloads view). Only bare audio file names that
+  // sit directly in the download folder are accepted. On Windows they go to
+  // the Recycle Bin so a mistake can be undone.
+  if (parsedUrl.pathname === '/api/downloads-delete' && req.method === 'POST') {
+    let body = '';
+    req.on('data', (chunk) => { body += chunk; if (body.length > 64 * 1024) req.destroy(); });
+    req.on('end', async () => {
+      const send = (code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(obj)); };
+      let names = [];
+      try { names = JSON.parse(body || '{}').names || []; } catch (e) { return send(400, { success: false, error: 'bad request' }); }
+      const dir = getDownloadsDir();
+      const files = [];
+      for (const n of Array.isArray(names) ? names.slice(0, 500) : []) {
+        const name = String(n || '');
+        if (!name || path.basename(name) !== name || name.includes('..')) continue;
+        if (!AUDIO_EXTENSIONS.has(path.extname(name).toLowerCase())) continue;
+        const full = path.join(dir, name);
+        if (fs.existsSync(full)) files.push(full);
+      }
+      if (!files.length) return send(200, { success: true, deleted: 0, recycled: false });
+      let recycled = false;
+      if (process.platform === 'win32') {
+        // Paths travel in an env var as JSON, never inside the script text.
+        const script = "Add-Type -AssemblyName Microsoft.VisualBasic; foreach ($p in (ConvertFrom-Json $env:MELODIX_DELETE)) { [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile($p, 'OnlyErrorDialogs', 'SendToRecycleBin') }";
+        recycled = await new Promise((resolve) => {
+          try {
+            const ps = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], {
+              windowsHide: true,
+              env: { ...process.env, MELODIX_DELETE: JSON.stringify(files) }
+            });
+            ps.on('error', () => resolve(false));
+            ps.on('close', (code) => resolve(code === 0));
+          } catch (e) { resolve(false); }
+        });
+      }
+      // Anything the Recycle Bin did not take is removed directly.
+      let deleted = 0;
+      for (const f of files) {
+        if (!fs.existsSync(f)) { deleted++; continue; }
+        try { await fs.promises.unlink(f); deleted++; } catch (e) {}
+      }
+      return send(200, { success: deleted > 0, deleted, recycled });
+    });
+    return;
+  }
+
   // Files the user explicitly downloaded, from the download folder.
   //
   // This is deliberately NOT /api/offline-library: that lists the streaming

@@ -1372,6 +1372,57 @@
                     </div>
                   </div>
                 </div>
+                <!-- Sidebar studio: layout cards + preferences (app.js applySidebarPrefs) -->
+                <div class="ts-custom-head">
+                  <div class="ts-custom-text">
+                    <span class="settings-section-title" data-i18n>Sidebar</span>
+                    <span class="ts-custom-sub" data-i18n>Choose how navigation sits beside your music</span>
+                  </div>
+                </div>
+                <div class="sb-layouts" id="sb-layouts" role="radiogroup" aria-label="Sidebar layout">
+                  <button type="button" class="sb-layout" data-sb-layout="unified" role="radio"><span class="sbl-prev sbl-unified"><i class="sbl-side"><b></b><b></b><b></b></i><i class="sbl-main"><b></b><b></b></i><i class="sbl-bar"></i></span><span class="sb-layout-name" data-i18n>Unified</span><span class="sb-layout-desc" data-i18n>Sidebar and content share one panel</span></button>
+                  <button type="button" class="sb-layout" data-sb-layout="detached" role="radio"><span class="sbl-prev sbl-detached"><i class="sbl-side"><b></b><b></b><b></b></i><i class="sbl-main"><b></b><b></b></i><i class="sbl-bar"></i></span><span class="sb-layout-name" data-i18n>Detached</span><span class="sb-layout-desc" data-i18n>Sidebar on its own card with breathing room</span></button>
+                  <button type="button" class="sb-layout" data-sb-layout="floating" role="radio"><span class="sbl-prev sbl-floating"><i class="sbl-side"><b></b><b></b><b></b></i><i class="sbl-main"><b></b><b></b></i><i class="sbl-bar"></i></span><span class="sb-layout-name" data-i18n>Floating</span><span class="sb-layout-desc" data-i18n>Compact floating rail and floating player bar</span></button>
+                </div>
+                <div class="m3-group sb-prefs">
+                  <div class="setting-item">
+                    <div class="setting-item-top sb-row">
+                      <div style="display: flex; flex-direction: column; gap: 2px;">
+                        <span class="setting-name" data-i18n>Labels</span>
+                        <span class="setting-hint" data-i18n>Show names next to the icons, or keep a slim rail</span>
+                      </div>
+                      <div class="sb-seg" id="sb-seg-labels" role="radiogroup"><button type="button" data-v="labels" data-i18n>Icons + labels</button><button type="button" data-v="icons" data-i18n>Icons only</button></div>
+                    </div>
+                  </div>
+                  <div class="setting-item">
+                    <div class="setting-item-top sb-row">
+                      <div style="display: flex; flex-direction: column; gap: 2px;">
+                        <span class="setting-name" data-i18n>Selected item</span>
+                        <span class="setting-hint" data-i18n>How the page you are on is highlighted</span>
+                      </div>
+                      <div class="sb-seg" id="sb-seg-active" role="radiogroup"><button type="button" data-v="pill" data-i18n>Pill</button><button type="button" data-v="soft" data-i18n>Soft</button><button type="button" data-v="line" data-i18n>Line</button></div>
+                    </div>
+                  </div>
+                  <div class="setting-item">
+                    <div class="setting-item-top sb-row">
+                      <div style="display: flex; flex-direction: column; gap: 2px;">
+                        <span class="setting-name" data-i18n>Sidebar surface</span>
+                        <span class="setting-hint" data-i18n>Match the content, tint it with your accent, or make it glass</span>
+                      </div>
+                      <div class="sb-seg" id="sb-seg-surface" role="radiogroup"><button type="button" data-v="match" data-i18n>Match</button><button type="button" data-v="tint" data-i18n>Accent tint</button><button type="button" data-v="glass" data-i18n>Glass</button></div>
+                    </div>
+                  </div>
+                  <div class="setting-item">
+                    <div class="setting-item-top" style="align-items: center;">
+                      <div style="display: flex; flex-direction: column; gap: 2px;">
+                        <span class="setting-name" data-i18n>Show Melodix logo</span>
+                        <span class="setting-hint" data-i18n>The logo and tagline at the top of the expanded sidebar</span>
+                      </div>
+                      <button type="button" class="effect-switch-btn active" id="btn-sb-brand"><span class="thumb"></span></button>
+                    </div>
+                  </div>
+                </div>
+
                 <div class="settings-section-title" data-i18n>Home button icon</div>
                 <div class="m3-group">
                   <div class="setting-item">
@@ -2691,17 +2742,6 @@
                       </div>
 
                       <div class="m3-group">
-                        <div class="setting-item">
-                          <div class="setting-item-top" style="align-items: center;">
-                            <div style="display: flex; flex-direction: column; gap: 2px;">
-                              <span class="setting-name" data-i18n>Classic sidebar</span>
-                              <span class="setting-hint" data-i18n>Use the compact floating sidebar and floating bottom
-                                player bar</span>
-                            </div>
-                            <button class="effect-switch-btn" id="btn-classic-sidebar" data-adv="classic_sidebar"
-                              type="button"><span class="thumb"></span></button>
-                          </div>
-                        </div>
                         <div class="setting-item" id="setting-desktop-shortcut">
                           <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
                             <div style="display: flex; flex-direction: column; gap: 2px;">
@@ -3053,7 +3093,7 @@
                       <div class="mx-sleeve-meta">
                         <span class="mx-sleeve-kicker">Melodix Records</span>
                         <span class="mx-sleeve-title">Melodix</span>
-                        <span class="mx-sleeve-sub" id="about-version">Version 2.0.6</span>
+                        <span class="mx-sleeve-sub" id="about-version">Version 2.0.7</span>
                       </div>
                     </div>
                   </div>
@@ -3117,7 +3157,7 @@
                   </svg>
                   Melodix made by MoOdY69...
                 </span>
-                <span class="settings-version-tag">v2.0.6</span>
+                <span class="settings-version-tag">v2.0.7</span>
               </div>
             </div>
           </div>

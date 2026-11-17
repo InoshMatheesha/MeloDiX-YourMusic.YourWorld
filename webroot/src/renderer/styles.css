@@ -10034,7 +10034,7 @@ body.perf .btn-proxy-remove {
   transition: none !important;
 }
 
-.track-row .track-row-actions > button:not(.btn-fav):not(.btn-fav-track):not(.btn-remove-from-queue) {
+.track-row .track-row-actions > button:not(.btn-fav):not(.btn-fav-track):not(.btn-remove-from-queue):not(.btn-row-delete-download) {
   display: none !important;
 }
 .moodex-ctx-menu {
@@ -12788,4 +12788,141 @@ body.reduce-motion .tp-card, body.reduce-motion .tp-check, body.perf .pal-album,
 body.accent-vivid {
   --sb-pill: linear-gradient(90deg, color-mix(in srgb, var(--accent-raw, var(--md-sys-color-primary)) 72%, #000) 0%, var(--accent-raw, var(--md-sys-color-primary)) 70%, color-mix(in srgb, var(--accent-raw, var(--md-sys-color-primary)) 50%, transparent) 100%);
   --sb-pill-glow: var(--accent-raw, var(--md-sys-color-primary));
+}
+
+/* ============================================================
+   Sidebar studio (Settings > Theme > Sidebar)
+   ============================================================ */
+.sb-layouts { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 14px; margin: 0 0 14px; }
+.sb-layout {
+  display: flex; flex-direction: column; gap: 4px; text-align: left; padding: 10px 10px 14px; border-radius: 20px;
+  cursor: pointer; font: inherit; color: inherit;
+  background: var(--md-sys-color-surface-container); border: 1px solid var(--md-sys-color-outline-variant);
+  transition: transform 0.35s cubic-bezier(0.2, 0.9, 0.3, 1.25), border-color 0.25s ease, box-shadow 0.35s ease;
+}
+.sb-layout:hover { transform: translateY(-3px); box-shadow: 0 12px 28px rgba(0, 0, 0, 0.25); }
+.sb-layout.active {
+  border-color: var(--sb-pill-glow, #2E9BFF);
+  box-shadow: 0 0 0 1px var(--sb-pill-glow, #2E9BFF), 0 10px 30px color-mix(in srgb, var(--sb-pill-glow, #2E9BFF) 28%, transparent);
+}
+.sb-layout-name { margin: 8px 4px 0; font-size: calc(15px * var(--font-scale, 1)); font-weight: 700; color: var(--md-sys-color-on-surface); }
+.sb-layout-desc { margin: 0 4px; font-size: calc(12px * var(--font-scale, 1)); line-height: 1.4; color: var(--md-sys-color-on-surface-variant); }
+
+/* Mini layout previews built from plain boxes */
+.sbl-prev { position: relative; display: block; aspect-ratio: 16 / 10; border-radius: 14px; overflow: hidden; background: color-mix(in srgb, var(--md-sys-color-on-surface) 6%, var(--md-sys-color-surface-container-lowest-solid, #0b0b0e)); }
+.sbl-prev i { position: absolute; display: block; }
+.sbl-side { background: var(--md-sys-color-surface-container-high-solid, #24262c); padding: 10% 0; display: flex !important; flex-direction: column; align-items: center; gap: 9%; }
+.sbl-side b { display: block; width: 52%; height: 5px; border-radius: 4px; background: color-mix(in srgb, var(--md-sys-color-on-surface) 22%, transparent); }
+.sbl-side b:first-child { background: var(--sb-pill-glow, #2E9BFF); }
+.sbl-main { background: var(--md-sys-color-surface-container-high-solid, #24262c); padding: 9%; }
+.sbl-main b { display: block; height: 22%; margin-bottom: 9%; border-radius: 5px; background: color-mix(in srgb, var(--md-sys-color-on-surface) 10%, transparent); }
+.sbl-bar { background: var(--md-sys-color-surface-container-highest-solid, #2c2e35); }
+/* Unified: one panel, sidebar flush with the content */
+.sbl-unified .sbl-side { left: 5%; top: 7%; bottom: 22%; width: 20%; border-radius: 10px 0 0 10px; }
+.sbl-unified .sbl-main { left: 25%; right: 5%; top: 7%; bottom: 22%; border-radius: 0 10px 10px 0; border-left: 1px solid color-mix(in srgb, var(--md-sys-color-on-surface) 6%, transparent); }
+.sbl-unified .sbl-bar { left: 0; right: 0; bottom: 0; height: 15%; }
+/* Detached: separate cards with a gap */
+.sbl-detached .sbl-side { left: 5%; top: 7%; bottom: 22%; width: 18%; border-radius: 10px; }
+.sbl-detached .sbl-main { left: 27%; right: 5%; top: 7%; bottom: 22%; border-radius: 10px; }
+.sbl-detached .sbl-bar { left: 0; right: 0; bottom: 0; height: 15%; }
+/* Floating: slim rail and a floating player pill */
+.sbl-floating .sbl-side { left: 5%; top: 18%; bottom: 30%; width: 11%; border-radius: 999px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35); }
+.sbl-floating .sbl-side b { width: 46%; }
+.sbl-floating .sbl-main { left: 20%; right: 5%; top: 7%; bottom: 7%; border-radius: 10px; }
+.sbl-floating .sbl-bar { left: 26%; right: 11%; bottom: 10%; height: 12%; border-radius: 999px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35); }
+
+/* Segmented choices */
+.sb-row { align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.sb-seg { display: inline-flex; padding: 3px; gap: 2px; border-radius: 999px; background: var(--md-sys-color-surface-container-highest); flex-shrink: 0; }
+.sb-seg button {
+  border: 0; background: transparent; color: var(--md-sys-color-on-surface-variant); font: inherit;
+  font-size: calc(12.5px * var(--font-scale, 1)); font-weight: 600; padding: 7px 14px; border-radius: 999px; cursor: pointer;
+  transition: background 0.25s ease, color 0.25s ease, box-shadow 0.25s ease;
+}
+.sb-seg button:hover { color: var(--md-sys-color-on-surface); }
+.sb-seg button.active { background: var(--md-sys-color-surface-container-low-solid, var(--md-sys-color-surface)); color: var(--md-sys-color-on-surface); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25); }
+.sb-prefs .setting-item.is-disabled { opacity: 0.45; pointer-events: none; }
+
+/* ---- The sidebar itself ---- */
+/* Detached: own rounded card with a gap before the content */
+body.sb-detached:not(.classic-sidebar):not(.mini) .app-layout > .sidebar {
+  border-radius: 34px !important;
+  margin-right: 12px !important;
+}
+body.sb-detached:not(.classic-sidebar):not(.mini) .app-layout > .sidebar ~ .main-content-wrap,
+body.sb-detached:not(.classic-sidebar):not(.mini) .app-layout > .sidebar ~ .main-content-wrap > .main-content {
+  border-top-left-radius: 34px !important;
+  border-bottom-left-radius: 34px !important;
+}
+
+/* Surface: accent tint or glass */
+body[data-sb-surface="tint"]:not(.classic-sidebar):not(.mini) .app-layout > .sidebar {
+  background: color-mix(in srgb, var(--sb-pill-glow, #2E9BFF) 11%, var(--md-sys-color-surface-container-low-solid, #141518)) !important;
+}
+body[data-sb-surface="glass"]:not(.classic-sidebar):not(.mini) .app-layout > .sidebar {
+  background: color-mix(in srgb, var(--md-sys-color-surface-container-low-solid, #141518) 52%, transparent) !important;
+  -webkit-backdrop-filter: blur(26px) saturate(160%);
+  backdrop-filter: blur(26px) saturate(160%);
+  box-shadow: inset -1px 0 0 color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent);
+}
+body[data-sb-surface="glass"].sb-detached:not(.classic-sidebar):not(.mini) .app-layout > .sidebar {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--md-sys-color-on-surface) 9%, transparent);
+}
+
+/* Selected item: soft tint or a line marker instead of the filled pill */
+body[data-sb-active="soft"]:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .sidebar-nav .nav-item.active,
+body[data-sb-active="soft"]:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .sidebar-nav #nav-discover.active {
+  background: color-mix(in srgb, var(--sb-pill-glow, #2E9BFF) 18%, transparent) !important;
+  box-shadow: none !important;
+}
+body[data-sb-active="line"]:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .sidebar-nav .nav-item.active,
+body[data-sb-active="line"]:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .sidebar-nav #nav-discover.active {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--sb-pill-glow, #2E9BFF) 14%, transparent), transparent 85%) !important;
+  box-shadow: inset 3px 0 0 var(--sb-pill-glow, #2E9BFF) !important;
+  border-radius: 6px 14px 14px 6px !important;
+}
+body[data-sb-active="soft"]:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .sidebar-nav .nav-item.active .nav-label,
+body[data-sb-active="line"]:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .sidebar-nav .nav-item.active .nav-label {
+  color: var(--md-sys-color-on-surface) !important;
+}
+body[data-sb-active="soft"]:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .sidebar-nav .nav-item.active svg,
+body[data-sb-active="line"]:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) .sidebar-nav .nav-item.active svg {
+  color: var(--sb-pill-glow, #2E9BFF) !important;
+}
+
+/* Logo on/off */
+body.sb-no-brand .sidebar .sidebar-brand { display: none !important; }
+
+/* Downloads: delete button arms (turns red and says "Delete?") before it deletes */
+.btn-row-delete-download { position: relative; overflow: hidden; transition: width 0.3s cubic-bezier(0.2, 0.9, 0.3, 1.2), background 0.2s ease, color 0.2s ease; }
+.btn-row-delete-download .dl-del-confirm { display: none; margin-left: 6px; font-size: calc(12px * var(--font-scale, 1)); font-weight: 700; white-space: nowrap; }
+.btn-row-delete-download.is-armed {
+  width: auto !important; padding: 0 12px !important; border-radius: 999px !important;
+  background: color-mix(in srgb, var(--md-sys-color-error, #FF453A) 18%, transparent) !important;
+  color: var(--md-sys-color-error, #FF453A) !important;
+  animation: dlDelPulse 1s ease-in-out infinite;
+}
+.btn-row-delete-download.is-armed .dl-del-confirm { display: inline; }
+.btn-row-delete-download:hover { color: var(--md-sys-color-error, #FF453A); }
+@keyframes dlDelPulse { 50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--md-sys-color-error, #FF453A) 18%, transparent); } }
+/* Row folds away while the file is removed */
+.track-row.dl-row-leaving { opacity: 0; transform: translateX(24px) scale(0.98); filter: blur(2px); transition: opacity 0.3s ease, transform 0.3s ease, filter 0.3s ease; pointer-events: none; }
+body.reduce-motion .btn-row-delete-download.is-armed { animation: none; }
+.track-row:has(.btn-row-delete-download.is-armed) .track-row-actions { opacity: 1; }
+
+/* Album theme: the ambient glow takes the cover's two main colours */
+body[data-theme-preset="album"]::after {
+  background:
+    radial-gradient(42% 40% at 12% 8%, color-mix(in srgb, var(--accent-raw, #2E9BFF) 30%, transparent), transparent 70%),
+    radial-gradient(46% 44% at 88% 92%, color-mix(in srgb, var(--accent-raw2, #1A5CF0) 30%, transparent), transparent 72%),
+    radial-gradient(40% 38% at 92% 10%, color-mix(in srgb, var(--accent-raw, #2E9BFF) 18%, transparent), transparent 70%) !important;
+  opacity: 0.7 !important;
+}
+/* Album theme: panels fade to the next cover's colours instead of snapping */
+body[data-theme-preset="album"] .app-layout > .sidebar,
+body[data-theme-preset="album"] .main-content,
+body[data-theme-preset="album"] .right-panel,
+body[data-theme-preset="album"] .playbar,
+body[data-theme-preset="album"] .rail-drawer {
+  transition: background-color 0.8s ease, color 0.5s ease, width 280ms cubic-bezier(0.2, 0, 0, 1), border-radius 280ms ease !important;
 }

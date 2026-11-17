@@ -72,16 +72,65 @@ fn app_ready(app: tauri::AppHandle) {
 
 // ---------- paths ----------
 
-fn data_dir() -> PathBuf {
-    // Mirror sidecar's shared/platform.js: %LOCALAPPDATA%\Moodex on Windows.
+fn local_app_data() -> PathBuf {
     if let Ok(local) = std::env::var("LOCALAPPDATA") {
         if !local.trim().is_empty() {
-            return PathBuf::from(local).join("Moodex");
+            return PathBuf::from(local);
         }
     }
-    dirs::data_local_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join("Moodex")
+    dirs::data_local_dir().unwrap_or_else(|| PathBuf::from("."))
+}
+
+// User data lives in %LOCALAPPDATA%\Melodix\Data, beside the install. The
+// uninstaller only deletes its own files there, so this folder survives
+// uninstalls and updates. The sidecar gets the same path via MOODEX_DATA_DIR.
+fn data_dir() -> PathBuf {
+    local_app_data().join("Melodix").join("Data")
+}
+
+// Copy a file or folder tree; used when a rename is blocked by a locked file.
+fn copy_tree(from: &Path, to: &Path) -> std::io::Result<()> {
+    if from.is_dir() {
+        std::fs::create_dir_all(to)?;
+        for e in std::fs::read_dir(from)?.flatten() {
+            copy_tree(&e.path(), &to.join(e.file_name()))?;
+        }
+        Ok(())
+    } else {
+        std::fs::copy(from, to).map(|_| ())
+    }
+}
+
+/// One-time move from the old %LOCALAPPDATA%\Moodex folder. That folder is
+/// shared with the separate MooDeX game library, so its `v2` folder stays put
+/// and only Melodix's own items move. Safe to run every launch: it only acts
+/// while the new folder has no storage.json and never overwrites anything.
+fn migrate_legacy_data() {
+    let old = local_app_data().join("Moodex");
+    let new = data_dir();
+    if !old.join("storage.json").exists() || new.join("storage.json").exists() {
+        return;
+    }
+    if std::fs::create_dir_all(&new).is_err() {
+        return;
+    }
+    let Ok(entries) = std::fs::read_dir(&old) else { return };
+    let mut moved = 0;
+    for e in entries.flatten() {
+        let name = e.file_name();
+        if name.to_string_lossy().eq_ignore_ascii_case("v2") {
+            continue;
+        }
+        let dest = new.join(&name);
+        if dest.exists() {
+            continue;
+        }
+        let src = e.path();
+        if std::fs::rename(&src, &dest).is_ok() || copy_tree(&src, &dest).is_ok() {
+            moved += 1;
+        }
+    }
+    launch_log(&format!("[melodix] moved {moved} item(s) from {:?} to {:?}", old, new));
 }
 
 fn config_path() -> PathBuf {
@@ -446,6 +495,11 @@ fn spawn_sidecar(
     cmd.arg(&server);
     cmd.env("MOODEX_TOKEN", token);
     cmd.env("MOODEX_SIDECAR", "1");
+    // Keep the sidecar on the shell's data folder unless the user moved it in Settings.
+    let custom = read_config().get("dataDir").and_then(|v| v.as_str()).map(|s| !s.trim().is_empty()).unwrap_or(false);
+    if !custom {
+        cmd.env("MOODEX_DATA_DIR", data_dir());
+    }
     cmd.env("NODE_ENV", "production");
     cmd.stdout(std::process::Stdio::piped());
     cmd.stderr(std::process::Stdio::piped());
@@ -1044,6 +1098,8 @@ fn boot_script(token: &str, version: &str) -> String {
 }
 
 pub fn run() {
+    // Before anything reads settings from the data folder.
+    migrate_legacy_data();
     let token = make_token();
     let port_slot: Arc<Mutex<Option<u16>>> = Arc::new(Mutex::new(None));
 
