@@ -36,6 +36,17 @@
 
   var zoom = 1.0;
 
+  // POST to a sidecar account route on the live port, with the session token.
+  function accountCall(route, body) {
+    return invoke('get_server_port').catch(function () { return PORT; }).then(function (port) {
+      return fetch('http://127.0.0.1:' + (port || PORT) + route, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Moodex-Token': TOKEN },
+        body: JSON.stringify(body)
+      });
+    }).then(function (r) { return r.json(); });
+  }
+
   var api = {
     // --- identity / bootstrap ---
     serverToken: TOKEN,
@@ -98,13 +109,21 @@
     onWindowVisibility: function (cb) { listen('window-visibility', cb); },
 
     // --- account import/export ---
+    // Rust shows the file dialog; the sidecar encrypts/decrypts the .mdacc (same format as the Electron app).
     accountExport: function (payload) {
-      var contents = '';
-      try { contents = typeof payload === 'string' ? payload : JSON.stringify(payload, null, 2); } catch (e) {}
-      return invoke('save_file', { defaultName: 'melodix-account.json', contents: contents })
-        .then(function (ok) { return { ok: !!ok }; }).catch(resolveTo({ ok: false }));
+      return invoke('pick_account_save_path').then(function (p) {
+        if (!p) return { canceled: true };
+        return accountCall('/api/account/write', { path: p, payload: payload || {} });
+      }).catch(function (e) { return { success: false, error: String(e && e.message || e) }; });
     },
-    accountImport: resolveTo(null),
+    accountImport: function () {
+      return invoke('pick_account_file').then(function (p) {
+        if (!p) return { canceled: true };
+        return accountCall('/api/account/read', { path: p });
+      }).catch(function (e) { return { success: false, error: String(e && e.message || e) }; });
+    },
+    // Awaitable full write of the settings store (used before restarting).
+    storageReplace: function (data) { return invoke('storage_replace', { data: data }).catch(resolveTo(false)); },
     savePlaylistsJson: resolveTo({ ok: true }),
     showPlaylistContextMenu: resolveTo(null),
 

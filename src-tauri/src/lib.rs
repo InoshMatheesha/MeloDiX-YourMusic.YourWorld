@@ -52,6 +52,7 @@ fn reveal_main(app: &tauri::AppHandle) {
         // Let the splash play its finish animation before the hand-off.
         std::thread::sleep(std::time::Duration::from_millis(520));
         if let Some(w) = app.get_webview_window("main") {
+            set_eco(&w, false);
             if maximize {
                 let _ = w.maximize();
             }
@@ -65,8 +66,12 @@ fn reveal_main(app: &tauri::AppHandle) {
     });
 }
 
+// Set once the page has loaded; the self-heal check below looks for it.
+static PAGE_READY: AtomicBool = AtomicBool::new(false);
+
 #[tauri::command]
 fn app_ready(app: tauri::AppHandle) {
+    PAGE_READY.store(true, Ordering::SeqCst);
     reveal_main(&app);
 }
 
@@ -301,6 +306,7 @@ fn show_main(app: &tauri::AppHandle) {
         let _ = s.close();
     }
     if let Some(w) = app.get_webview_window("main") {
+        set_eco(&w, false);
         let _ = w.unminimize();
         let _ = w.show();
         let _ = w.set_focus();
@@ -312,6 +318,7 @@ fn toggle_main(app: &tauri::AppHandle) {
         if w.is_visible().unwrap_or(false) && !w.is_minimized().unwrap_or(false) {
             save_geometry(&w);
             let _ = w.hide();
+            set_eco(&w, true);
         } else {
             show_main(app);
         }
@@ -398,6 +405,42 @@ fn disable_browser_keys(win: &tauri::WebviewWindow) {
 
 #[cfg(not(windows))]
 fn disable_browser_keys(_win: &tauri::WebviewWindow) {}
+
+// Eco mode: while Melodix is minimized or in the tray, WebView2 is told it is
+// not visible (no painting, animation frames stop) and to aim for low memory
+// use (caches trimmed). Audio keeps playing. Undone the moment it is shown.
+static ECO_ON: AtomicBool = AtomicBool::new(false);
+
+#[cfg(windows)]
+fn set_eco(win: &tauri::WebviewWindow, on: bool) {
+    if ECO_ON.swap(on, Ordering::SeqCst) == on {
+        return;
+    }
+    let _ = win.with_webview(move |wv| unsafe {
+        use webview2_com::Microsoft::Web::WebView2::Win32::{
+            ICoreWebView2_19, COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW,
+            COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL,
+        };
+        use windows_core::Interface;
+        let controller = wv.controller();
+        let _ = controller.SetIsVisible(!on);
+        if let Ok(core) = controller.CoreWebView2() {
+            if let Ok(c19) = core.cast::<ICoreWebView2_19>() {
+                let level = if on { COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW } else { COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL };
+                let _ = c19.SetMemoryUsageTargetLevel(level);
+            }
+        }
+    });
+}
+
+#[cfg(not(windows))]
+fn set_eco(_win: &tauri::WebviewWindow, _on: bool) {}
+
+/// Eco on when the window is hidden or minimized, off otherwise.
+fn sync_eco(win: &tauri::WebviewWindow) {
+    let away = !win.is_visible().unwrap_or(true) || win.is_minimized().unwrap_or(false);
+    set_eco(win, away);
+}
 
 fn launch_log(msg: &str) {
     let dir = data_dir();
@@ -495,6 +538,8 @@ fn spawn_sidecar(
     cmd.arg(&server);
     cmd.env("MOODEX_TOKEN", token);
     cmd.env("MOODEX_SIDECAR", "1");
+    // The sidecar exits by itself once this process is gone.
+    cmd.env("MELODIX_PARENT_PID", std::process::id().to_string());
     // Keep the sidecar on the shell's data folder unless the user moved it in Settings.
     let custom = read_config().get("dataDir").and_then(|v| v.as_str()).map(|s| !s.trim().is_empty()).unwrap_or(false);
     if !custom {
@@ -578,6 +623,7 @@ fn minimize_window(window: tauri::WebviewWindow) {
     } else {
         let _ = window.minimize();
     }
+    set_eco(&window, true);
 }
 
 /// Real WebView2 zoom (CSS zoom on <body> left gaps and let the page scroll).
@@ -655,7 +701,59 @@ fn start_drag(window: tauri::WebviewWindow) {
 
 #[tauri::command]
 fn restart_app(app: tauri::AppHandle) {
-    app.restart();
+    if !relaunch_after_exit(&app, None) {
+        // Helper could not start: fall back to an in-place restart.
+        kill_sidecar(&app);
+        app.restart();
+    }
+}
+
+/// Relaunch when the UI thread may be stuck: start the helper, stop the
+/// sidecar and end this process directly (app.exit needs a free event loop).
+fn relaunch_hard(app: &tauri::AppHandle, arg: &str) {
+    if spawn_relaunch_helper(Some(arg)) {
+        kill_sidecar(app);
+        std::process::exit(0);
+    }
+}
+
+/// Quit, then start Melodix again once this process has fully exited. Starting
+/// the new copy straight away (app.restart) raced the old WebView2 engine while
+/// it shut down, and the new window could come up blank.
+fn relaunch_after_exit(app: &tauri::AppHandle, extra_arg: Option<&str>) -> bool {
+    if spawn_relaunch_helper(extra_arg) {
+        quit_app(app);
+        true
+    } else {
+        false
+    }
+}
+
+/// Hidden PowerShell helper: wait for this process to exit, pause, start Melodix.
+fn spawn_relaunch_helper(extra_arg: Option<&str>) -> bool {
+    let Ok(exe) = std::env::current_exe().map(strip_verbatim) else { return false };
+    let pid = std::process::id();
+    let args = extra_arg.map(|a| format!(" -ArgumentList '{}'", a.replace('\'', "''"))).unwrap_or_default();
+    let script = format!(
+        "Wait-Process -Id {pid} -ErrorAction SilentlyContinue; \
+         Start-Sleep -Milliseconds 1500; \
+         Start-Process -FilePath '{exe}'{args}",
+        exe = exe.to_string_lossy().replace('\'', "''"),
+    );
+    let mut cmd = std::process::Command::new("powershell.exe");
+    cmd.args(["-NoProfile", "-WindowStyle", "Hidden", "-Command", &script]);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    match cmd.spawn() {
+        Ok(_) => true,
+        Err(e) => {
+            launch_log(&format!("[melodix] relaunch helper failed: {e}"));
+            false
+        }
+    }
 }
 
 #[tauri::command]
@@ -818,6 +916,47 @@ async fn pick_folder() -> String {
         Some(d) => d.path().to_string_lossy().to_string(),
         None => String::new(),
     }
+}
+
+/// Open dialog for a Melodix account file (.mdacc, or a plain .json export).
+#[tauri::command]
+async fn pick_account_file() -> String {
+    match rfd::AsyncFileDialog::new()
+        .set_title("Import Melodix account")
+        .add_filter("Melodix account", &["mdacc", "json"])
+        .pick_file()
+        .await
+    {
+        Some(f) => f.path().to_string_lossy().to_string(),
+        None => String::new(),
+    }
+}
+
+/// Save dialog for an account export; the sidecar writes the encrypted file.
+#[tauri::command]
+async fn pick_account_save_path() -> String {
+    match rfd::AsyncFileDialog::new()
+        .set_title("Export Melodix account")
+        .set_file_name("melodix-account.mdacc")
+        .add_filter("Melodix account", &["mdacc"])
+        .save_file()
+        .await
+    {
+        Some(f) => {
+            let mut p = f.path().to_path_buf();
+            if p.extension().map(|e| !e.eq_ignore_ascii_case("mdacc")).unwrap_or(true) {
+                p.set_extension("mdacc");
+            }
+            p.to_string_lossy().to_string()
+        }
+        None => String::new(),
+    }
+}
+
+/// Like storage_save, but awaited by the account import before it restarts.
+#[tauri::command]
+fn storage_replace(data: serde_json::Value) -> bool {
+    storage_save(data)
 }
 
 #[tauri::command]
@@ -1153,9 +1292,27 @@ pub fn run() {
             update_action,
             install_update_now,
             app_ready,
+            pick_account_file,
+            pick_account_save_path,
+            storage_replace,
         ])
         .setup(move |app| {
             let handle = app.handle().clone();
+
+            // Self-heal: WebView2 sometimes never finishes starting (seen right after
+            // a previous copy exited), leaving a blank window. Armed before any window
+            // is built, so it still fires if that creation hangs. Relaunches once;
+            // --webview-retry stops it looping.
+            if !std::env::args().any(|a| a == "--webview-retry") {
+                let app_for_heal = handle.clone();
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_secs(25));
+                    if !PAGE_READY.load(Ordering::SeqCst) {
+                        launch_log("[melodix] page did not load in 25s - relaunching once");
+                        relaunch_hard(&app_for_heal, "--webview-retry");
+                    }
+                });
+            }
             let version = app.package_info().version.to_string();
 
             // Launched by Windows at sign-in with "Start minimized" on: stay in the tray.
@@ -1266,18 +1423,33 @@ pub fn run() {
                 });
             }
 
+            // Safety net: re-check eco mode every few seconds (e.g. started in the tray).
+            {
+                let w = win.clone();
+                std::thread::spawn(move || loop {
+                    std::thread::sleep(std::time::Duration::from_secs(3));
+                    sync_eco(&w);
+                });
+            }
+
             {
                 let w = win.clone();
                 win.on_window_event(move |event| match event {
                     // Used by the renderer's pause-on-hide logic.
                     tauri::WindowEvent::Focused(focused) => {
                         let _ = w.emit("window-visibility", *focused);
+                        if *focused {
+                            set_eco(&w, false);
+                        }
                     }
+                    // Minimize and restore both arrive as a resize.
+                    tauri::WindowEvent::Resized(_) => sync_eco(&w),
                     tauri::WindowEvent::CloseRequested { api, .. } => {
                         save_geometry(&w);
                         if desktop_flag("trayOnClose") {
                             api.prevent_close();
                             let _ = w.hide();
+                            set_eco(&w, true);
                         }
                     }
                     _ => {}

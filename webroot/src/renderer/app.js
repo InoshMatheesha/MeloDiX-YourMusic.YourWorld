@@ -1783,6 +1783,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const mono = intensity < 8;
     updateMeshGradient(mono ? '#9E9E9E' : hexColor, mono ? '#757575' : resolvedAccent2, mode);
     refreshCachedThemeColors();
+    if (typeof m3cColorCache !== 'undefined') m3cColorCache.t = 0;
   }
 
   // Theme cards: which light/dark mode each preset runs in.
@@ -13331,20 +13332,27 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
   let stackRetry = false;
+  let stackRetries = 0;
+  const NAV_STACK_CLASSES = ['stack-only', 'stack-first', 'stack-mid', 'stack-last', 'stack-h'];
   function refreshStacks() {
     const sNav = document.querySelector('.sidebar-nav');
     if (sNav) {
       const all = [...sNav.querySelectorAll('.nav-item')];
       const visible = all.filter((n) => n.getBoundingClientRect().height > 1 && getComputedStyle(n).display !== 'none');
       if (all.length > 0 && visible.length === 0) {
-        if (!stackRetry) {
+        // Sidebar not laid out yet: retry a few times, slowly, instead of every frame forever.
+        if (!stackRetry && stackRetries < 10) {
           stackRetry = true;
-          requestAnimationFrame(() => { stackRetry = false; refreshStacks(); });
+          stackRetries++;
+          setTimeout(() => { stackRetry = false; refreshStacks(); }, 300);
         }
         return;
       }
-      sNav.querySelectorAll('.nav-item').forEach((n) => {
-        n.classList.remove('stack-only', 'stack-first', 'stack-mid', 'stack-last', 'stack-h');
+      stackRetries = 0;
+      // Only touch classes that are present: classList.remove() of a missing class
+      // still writes the attribute, which re-fired the observer below every frame.
+      all.forEach((n) => {
+        NAV_STACK_CLASSES.forEach((c) => { if (n.classList.contains(c)) n.classList.remove(c); });
       });
     }
     applyStackedRadius(document.querySelector('.settings-nav'), '.settings-nav-btn', false);
@@ -17263,14 +17271,14 @@ document.addEventListener('DOMContentLoaded', async () => {
       const imgSize = Math.ceil(currentCover * 1.06);
       ctx.drawImage(m3c.img, (iw - side) / 2, (ih - side) / 2, side, side, cx - imgSize / 2, cy - imgSize / 2, imgSize, imgSize);
     } else {
-      ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--md-sys-color-surface-container-highest-solid') || '#444';
+      ctx.fillStyle = m3cColors(now).surface || '#444';
       ctx.fillRect(0, 0, CANVAS_PX, CANVAS_PX);
     }
     ctx.restore();
     const audio = el.nativeAudio;
     const dur = audio && isFinite(audio.duration) && audio.duration > 0 ? audio.duration : 0;
     const p = dur ? Math.min(1, Math.max(0, audio.currentTime / dur)) : 0;
-    const primary = (getComputedStyle(document.documentElement).getPropertyValue('--md-sys-color-primary') || '#d0bcff').trim();
+    const primary = m3cColors(now).primary;
     const STEPS = 240;
     const ringPoint = (phi, wave) => {
       const r = radiusAt(phi - rot) + RING_GAP + RING_W / 2 + wave;
@@ -17303,9 +17311,31 @@ document.addEventListener('DOMContentLoaded', async () => {
       ctx.stroke();
     }
   }
+  // Theme colours for the cover canvas, read at most once a second (getComputedStyle per frame forced style recalcs).
+  var m3cColorCache = { t: 0, primary: '#d0bcff', surface: '#444' };
+  function m3cColors(now) {
+    if (now - m3cColorCache.t > 1000) {
+      const cs = getComputedStyle(document.documentElement);
+      m3cColorCache.primary = (cs.getPropertyValue('--md-sys-color-primary') || '#d0bcff').trim();
+      m3cColorCache.surface = (cs.getPropertyValue('--md-sys-color-surface-container-highest-solid') || '#444').trim();
+      m3cColorCache.t = now;
+    }
+    return m3cColorCache;
+  }
   function m3cLoop(now) {
     m3c.raf = 0;
     if (!m3cEnabled() || document.hidden) return;
+
+    // Frame budget: full speed only while morphing or hovering, 30 fps playing, ~12 fps paused.
+    const MS = window.MoodexShapes;
+    const morphing = !!(MS && m3c.start && now - m3c.start < (MS.MORPH_MS || 0) + 60);
+    const hoverMoving = Math.abs((m3c.isHovered ? 1 : 0) - m3c.hoverProgress) > 0.002;
+    const minGap = (morphing || hoverMoving) ? 0 : (state.isPlaying ? 33 : 80);
+    if (minGap && m3c.lastDraw && now - m3c.lastDraw < minGap) {
+      m3c.raf = requestAnimationFrame(m3cLoop);
+      return;
+    }
+    m3c.lastDraw = now;
 
     const targetHover = m3c.isHovered ? 1 : 0;
     const diff = targetHover - m3c.hoverProgress;
@@ -17324,7 +17354,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     if (!m3c.last) m3c.last = now;
-    const delta = Math.min(64, Math.max(0, now - m3c.last));
+    const delta = Math.min(120, Math.max(0, now - m3c.last));
     m3c.last = now;
 
     const baseSpeed = (2 * Math.PI) / 14000;
@@ -19490,7 +19520,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   (function initUpdateUI() {
     const api = window.electronAPI;
     const $ = (id) => document.getElementById(id);
-    let currentAppVersion = '2.0.7';
+    let currentAppVersion = '2.0.8';
     if (api && api.getAppVersion) {
       api.getAppVersion().then((v) => {
         if (v) {
@@ -19625,14 +19655,21 @@ document.addEventListener('DOMContentLoaded', async () => {
     const tr = (x) => (typeof t === 'function' ? t(x) : x);
     const homeBtnEnabled = () => { try { return localStorage.getItem('moodex_home_update_btn') !== '0'; } catch (_) { return true; } };
 
-    // Floating Home button: fixed to the bottom-left of the main content area.
+    // Home update button: top-left corner, lined up with the sidebar edge and the search bar row.
     function placeUpdatePill() {
       const pill = document.getElementById('home-update-pill');
-      const main = document.getElementById('main-content');
-      if (!pill || !main || pill.hidden) return;
-      const r = main.getBoundingClientRect();
-      pill.style.left = `${Math.round(r.left + 20)}px`;
-      pill.style.bottom = `${Math.round(window.innerHeight - r.bottom + 20)}px`;
+      if (!pill || pill.hidden) return;
+      const side = document.getElementById('sidebar');
+      const search = document.querySelector('.search-box-wrapper') || document.getElementById('search-input');
+      const left = side ? side.getBoundingClientRect().left : 16;
+      let top = 14;
+      if (search) {
+        const sr = search.getBoundingClientRect();
+        if (sr.height) top = sr.top + sr.height / 2 - (pill.offsetHeight || 34) / 2;
+      }
+      pill.style.left = `${Math.round(Math.max(12, left))}px`;
+      pill.style.top = `${Math.round(Math.max(8, top))}px`;
+      pill.style.bottom = 'auto';
     }
     window.addEventListener('resize', placeUpdatePill);
 
@@ -22410,7 +22447,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (typeof showToast === 'function') showToast('No playlists to export', 'error');
       return;
     }
-    let appVer = '2.0.7';
+    let appVer = '2.0.8';
     try {
       if (window.electronAPI && window.electronAPI.getAppVersion) {
         const v = await window.electronAPI.getAppVersion();
@@ -22691,20 +22728,27 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
       const data = res.data;
       const store = data.localStorage || data;
-      if (typeof store === 'object' && store !== null) {
-        try { localStorage.clear(); } catch (_) { }
-        for (const [key, val] of Object.entries(store)) {
-          if (val !== undefined && val !== null) {
-            try {
-              localStorage.setItem(key, typeof val === 'string' ? val : JSON.stringify(val));
-            } catch (_) { }
-          }
-        }
-        if (window.electronAPI.storageSaveSync && window.__MOODEX_STORAGE_MAP__) {
-          try { window.electronAPI.storageSaveSync(window.__MOODEX_STORAGE_MAP__); } catch (_) { }
-        }
+      if (typeof store !== 'object' || store === null || !Object.keys(store).length) {
+        showToast('This account file is empty', 'error');
+        return;
       }
-      showToast('Account imported! Restarting...', 'success');
+      // Build the whole settings map first, then write it to disk in one go.
+      const next = {};
+      for (const [key, val] of Object.entries(store)) {
+        if (val === undefined || val === null) continue;
+        next[key] = typeof val === 'string' ? val : JSON.stringify(val);
+      }
+      try { localStorage.clear(); } catch (_) { }
+      for (const [key, val] of Object.entries(next)) {
+        try { localStorage.setItem(key, val); } catch (_) { }
+      }
+      // Wait for the disk write so the restart cannot boot on the old settings.
+      if (window.electronAPI.storageReplace) {
+        await window.electronAPI.storageReplace(next);
+      } else if (window.electronAPI.storageSaveSync && window.__MOODEX_STORAGE_MAP__) {
+        try { window.electronAPI.storageSaveSync(window.__MOODEX_STORAGE_MAP__); } catch (_) { }
+      }
+      showToast(`Account imported (${Object.keys(next).length} settings) - restarting...`, 'success');
       setTimeout(() => {
         if (window.electronAPI && window.electronAPI.restartApp) {
           window.electronAPI.restartApp();

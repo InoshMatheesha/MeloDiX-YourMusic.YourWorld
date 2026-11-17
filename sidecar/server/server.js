@@ -16,6 +16,18 @@ const { StringDecoder } = require("string_decoder");
 const dns = require('dns');
 const net = require('net');
 
+// Tauri sidecar: quit as soon as the Melodix window process is gone (crash,
+// Task Manager, self-restart), so no orphaned node.exe keeps holding RAM and
+// the port. Melodix passes its own PID in MELODIX_PARENT_PID.
+(function watchParentProcess() {
+  const parentPid = parseInt(process.env.MELODIX_PARENT_PID || '', 10);
+  if (process.env.MOODEX_SIDECAR !== '1' || !parentPid) return;
+  const timer = setInterval(() => {
+    try { process.kill(parentPid, 0); } catch (e) { if (e && e.code !== 'EPERM') process.exit(0); }
+  }, 3000);
+  timer.unref();
+})();
+
 // ---------------------------------------------------------------------------
 // Force IPv4 for every outbound connection this process makes.
 //
@@ -5668,6 +5680,10 @@ async function fetchSongSegments(videoId) {
 }
 
 const TOKEN_PROTECTED_ROUTES = new Set([
+  // File-touching routes added for the Tauri build.
+  '/api/downloads-delete',
+  '/api/account/read',
+  '/api/account/write',
   '/api/state',
   '/api/translate',
   '/api/i18n-batch',
@@ -8785,6 +8801,55 @@ async function routeRequest(req, res) {
   if (parsedUrl.pathname === '/api/downloaded-track') {
     const name = parsedUrl.query.name || '';
     return handleDownloadedTrack(req, res, name);
+  }
+
+  // Melodix account files (.mdacc): "RFAC" + 12-byte IV + 16-byte GCM tag +
+  // AES-256-GCM(deflateRaw(JSON)). Same format and key as the Electron app,
+  // so exports from older versions import here and the other way round.
+  // Plain .json account exports are accepted on read as well.
+  if ((parsedUrl.pathname === '/api/account/read' || parsedUrl.pathname === '/api/account/write') && req.method === 'POST') {
+    let body = '';
+    req.on('data', (chunk) => { body += chunk; if (body.length > 64 * 1024 * 1024) req.destroy(); });
+    req.on('end', async () => {
+      const send = (code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(obj)); };
+      const crypto = require('crypto');
+      const zlib = require('zlib');
+      const KEY = crypto.createHash('sha256').update('moodex-account-key-v1').digest();
+      let req0 = {};
+      try { req0 = JSON.parse(body || '{}'); } catch (e) { return send(400, { success: false, error: 'Bad request' }); }
+      const filePath = String(req0.path || '');
+      const ext = path.extname(filePath).toLowerCase();
+      if (!filePath || !path.isAbsolute(filePath) || !['.mdacc', '.json'].includes(ext)) {
+        return send(400, { success: false, error: 'Pick a .mdacc or .json account file' });
+      }
+      try {
+        if (parsedUrl.pathname === '/api/account/read') {
+          const buf = await fs.promises.readFile(filePath);
+          let data;
+          if (buf.length >= 32 && buf.subarray(0, 4).toString('utf8') === 'RFAC') {
+            const decipher = crypto.createDecipheriv('aes-256-gcm', KEY, buf.subarray(4, 16));
+            decipher.setAuthTag(buf.subarray(16, 32));
+            const plain = Buffer.concat([decipher.update(buf.subarray(32)), decipher.final()]);
+            data = JSON.parse(zlib.inflateRawSync(plain).toString('utf8'));
+          } else {
+            data = JSON.parse(buf.toString('utf8').replace(/^﻿/, ''));
+          }
+          if (!data || typeof data !== 'object') throw new Error('This file has no account data');
+          return send(200, { success: true, data });
+        }
+        if (ext !== '.mdacc') return send(400, { success: false, error: 'Account exports are saved as .mdacc' });
+        const json = JSON.stringify(req0.payload || {});
+        const iv = crypto.randomBytes(12);
+        const cipher = crypto.createCipheriv('aes-256-gcm', KEY, iv);
+        const enc = Buffer.concat([cipher.update(zlib.deflateRawSync(Buffer.from(json, 'utf8'))), cipher.final()]);
+        await fs.promises.writeFile(filePath, Buffer.concat([Buffer.from('RFAC'), iv, cipher.getAuthTag(), enc]));
+        return send(200, { success: true, filePath });
+      } catch (e) {
+        const msg = /auth|decrypt|unsupported state/i.test(e.message) ? 'This account file is damaged or not a Melodix account' : e.message;
+        return send(200, { success: false, error: msg });
+      }
+    });
+    return;
   }
 
   // Delete downloaded files (Downloads view). Only bare audio file names that

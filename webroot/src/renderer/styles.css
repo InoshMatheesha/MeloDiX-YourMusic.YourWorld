@@ -12453,7 +12453,7 @@ body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) { padding-bo
 
 /* Tiny floating update button - bottom-left of Home, folds into an orb */
 .home-update-pill {
-  position: fixed; left: 20px; bottom: 120px; z-index: 60;
+  position: fixed; left: 20px; top: 14px; z-index: 100000;
   display: inline-flex; align-items: center; gap: 8px;
   height: 34px; max-width: 320px; padding: 0 14px 0 4px;
   border-radius: 999px; overflow: hidden; white-space: nowrap;
@@ -12466,7 +12466,7 @@ body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) { padding-bo
   font: inherit; font-size: calc(12.5px * var(--font-scale, 1)); font-weight: 600;
   cursor: pointer;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.32), 0 0 18px color-mix(in srgb, var(--md-sys-color-primary) 18%, transparent);
-  opacity: 0; transform: translateY(12px) scale(0.9); transform-origin: 0 100%;
+  opacity: 0; transform: translateY(-12px) scale(0.9); transform-origin: 0 0;
   transition: opacity 0.35s ease, transform 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.3), max-width 0.5s cubic-bezier(0.2, 0.9, 0.3, 1), padding 0.5s cubic-bezier(0.2, 0.9, 0.3, 1), box-shadow 0.25s ease;
 }
 .home-update-pill.is-shown { opacity: 1; transform: none; }
@@ -12475,7 +12475,7 @@ body:not(.classic-sidebar):not(.mini) .sidebar:not(.rail-collapsed) { padding-bo
 .home-update-pill:hover { box-shadow: 0 10px 28px rgba(0, 0, 0, 0.36), 0 0 26px color-mix(in srgb, var(--md-sys-color-primary) 32%, transparent); }
 .home-update-pill:active { transform: scale(0.96); }
 /* Only on Home */
-body:has(#view-discover:not(.active)) .home-update-pill { opacity: 0; pointer-events: none; transform: translateY(12px) scale(0.9); }
+body:has(#view-discover:not(.active)) .home-update-pill { opacity: 0; pointer-events: none; transform: translateY(-12px) scale(0.9); }
 
 .hup-orb {
   position: relative; width: 26px; height: 26px; flex-shrink: 0; border-radius: 50%;
@@ -12926,3 +12926,28 @@ body[data-theme-preset="album"] .playbar,
 body[data-theme-preset="album"] .rail-drawer {
   transition: background-color 0.8s ease, color 0.5s ease, width 280ms cubic-bezier(0.2, 0, 0, 1), border-radius 280ms ease !important;
 }
+
+/* Lighter rendering: same look, far fewer and smaller GPU layers.
+   Home glow: only the visible layer is drawn, and it is no longer 25% oversized. */
+.home-ambient-layer { inset: -12%; will-change: auto; transition: opacity 700ms ease, visibility 0s linear 700ms; visibility: hidden; }
+.home-ambient-layer.on { visibility: visible; transition: opacity 700ms ease, visibility 0s; }
+/* Background glow: smaller layer, and it stops drifting while Melodix is unfocused or hidden */
+body::after { inset: -8% !important; will-change: auto !important; }
+body.app-paused::after { animation-play-state: paused !important; }
+/* Home shelves off-screen are not rendered until they scroll into view */
+.sp-row { content-visibility: auto; contain-intrinsic-size: auto 320px; }
+
+/* Idle-friendly motion: nothing repaints forever while you are not looking at it */
+.btn-pill-primary { animation: none !important; }
+.btn-pill-primary:hover { animation: moodex-flow 9s ease-in-out infinite !important; }
+.titlebar-moodex-icon { animation: moodex-flow 8s ease-in-out 1, moodex-pulse 4.5s ease-in-out 2 !important; }
+.titlebar-moodex-icon:hover { animation: moodex-flow 8s ease-in-out infinite, moodex-pulse 4.5s ease-in-out infinite !important; }
+.moodex-float-logo { animation-iteration-count: 1 !important; }
+.modal-backdrop:not(.visible) *, .modal-backdrop.hidden * { animation-play-state: paused !important; }
+body:not(.is-playing)::after { animation-play-state: paused !important; }
+/* Update button: pulse a few times to catch the eye, then rest (an endless pulse kept the window repainting) */
+.home-update-pill-dot { animation-iteration-count: 5 !important; }
+.home-update-pill-ico { animation-iteration-count: 3 !important; }
+.home-update-pill:hover .home-update-pill-dot, .home-update-pill:hover .home-update-pill-ico { animation-iteration-count: infinite !important; }
+.upd-card[data-state="available"] .upd-ico-new { animation-iteration-count: 3 !important; }
+.upd-card[data-state="ready"] .upd-core { animation-iteration-count: 4 !important; }
