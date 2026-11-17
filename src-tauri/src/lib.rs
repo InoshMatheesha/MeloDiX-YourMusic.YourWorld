@@ -142,12 +142,12 @@ fn write_desktop(cfg: &serde_json::Value) {
     }
 }
 
-/// Close-to-tray and window memory are on by default; the rest start off.
+/// Close-to-tray, window memory and update checks are on by default; the rest start off.
 fn desktop_flag(key: &str) -> bool {
     read_desktop()
         .get(key)
         .and_then(|v| v.as_bool())
-        .unwrap_or(matches!(key, "trayOnClose" | "rememberWindow"))
+        .unwrap_or(matches!(key, "trayOnClose" | "rememberWindow" | "autoCheckUpdates"))
 }
 
 #[cfg(windows)]
@@ -542,13 +542,23 @@ fn get_desktop_settings() -> serde_json::Value {
         "startMinimized": desktop_flag("startMinimized"),
         "rememberWindow": desktop_flag("rememberWindow"),
         "multiInstance": desktop_flag("multiInstance"),
+        "autoCheckUpdates": desktop_flag("autoCheckUpdates"),
+        "autoDownloadUpdates": desktop_flag("autoDownloadUpdates"),
         "launchAtStartup": autostart_enabled(),
     })
 }
 
 #[tauri::command]
 fn set_desktop_setting(key: String, value: bool) -> serde_json::Value {
-    const KEYS: [&str; 5] = ["trayOnClose", "minimizeToTray", "startMinimized", "rememberWindow", "multiInstance"];
+    const KEYS: [&str; 7] = [
+        "trayOnClose",
+        "minimizeToTray",
+        "startMinimized",
+        "rememberWindow",
+        "multiInstance",
+        "autoCheckUpdates",
+        "autoDownloadUpdates",
+    ];
     if key == "launchAtStartup" {
         set_autostart(value);
     } else if KEYS.contains(&key.as_str()) {
@@ -875,10 +885,31 @@ fn background_check_for_updates(app: &tauri::AppHandle) {
         "assetName": asset.as_ref().map(|a| a.1.clone()).unwrap_or_default(),
         "canInstall": asset.is_some(),
     });
-    if let Some(state) = app.try_state::<AppState>() {
-        *state.update_info.lock().unwrap() = Some(info.clone());
+    let Some(state) = app.try_state::<AppState>() else { return };
+    *state.update_info.lock().unwrap() = Some(info.clone());
+    let _ = app.emit("update-available", info.clone());
+
+    // "Download updates in the background": fetch the installer now so the
+    // Home button can offer a one-click restart.
+    let already = state.installer_path.lock().unwrap().as_ref().map(|p| p.exists()).unwrap_or(false);
+    if desktop_flag("autoDownloadUpdates") && !already {
+        let asset_url = info.get("assetUrl").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let asset_name = info.get("assetName").and_then(|v| v.as_str()).unwrap_or("melodix-setup.exe").to_string();
+        if asset_url.is_empty() {
+            return;
+        }
+        let dest = std::env::temp_dir().join(format!("melodix-update-{}", asset_name));
+        match download_with_progress(app, &asset_url, &dest) {
+            Ok(()) => {
+                *state.installer_path.lock().unwrap() = Some(dest);
+                let _ = app.emit("update-ready", info);
+            }
+            Err(e) => {
+                launch_log(&format!("[melodix] background update download failed: {e}"));
+                let _ = std::fs::remove_file(&dest);
+            }
+        }
     }
-    let _ = app.emit("update-available", info);
 }
 
 fn download_with_progress(app: &tauri::AppHandle, url: &str, dest: &Path) -> Result<(), String> {
@@ -1167,8 +1198,15 @@ pub fn run() {
             {
                 let app_for_update = app.handle().clone();
                 std::thread::spawn(move || {
-                    std::thread::sleep(std::time::Duration::from_secs(5));
-                    background_check_for_updates(&app_for_update);
+                    // First check shortly after launch, then every 6 hours while running.
+                    let mut wait = std::time::Duration::from_secs(5);
+                    loop {
+                        std::thread::sleep(wait);
+                        if desktop_flag("autoCheckUpdates") {
+                            background_check_for_updates(&app_for_update);
+                        }
+                        wait = std::time::Duration::from_secs(6 * 60 * 60);
+                    }
                 });
             }
 

@@ -381,7 +381,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     toast.innerHTML = `
       ${iconSvg ? `<span class="toast-icon">${iconSvg}</span>` : ''}
       <span class="toast-text">${escapeHtml(cleanMessage)}</span>
+      <svg class="toast-timer" viewBox="0 0 16 16" aria-hidden="true"><circle class="tt-track" cx="8" cy="8" r="6"/><circle class="tt-fill" cx="8" cy="8" r="6"/></svg>
     `;
+    // The island timer ring drains over the toast lifetime.
+    toast.style.setProperty("--toast-dur", `${duration || 3500}ms`);
 
     container.appendChild(toast);
 
@@ -402,8 +405,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         toast.remove();
         processToastQueue();
       };
-      toast.addEventListener('animationend', finish, { once: true });
-      setTimeout(finish, 320);
+      // Only the island collapse itself ends the toast, not its child animations.
+      toast.addEventListener('animationend', (e) => { if (e.target === toast) finish(); });
+      setTimeout(finish, 480);
     };
 
     const startTimer = (dur) => {
@@ -659,6 +663,21 @@ document.addEventListener('DOMContentLoaded', async () => {
     themeAccent: localStorage.getItem('moodex_theme_accent') || '#2E9BFF',
     themeIntensity: parseInt(localStorage.getItem('moodex_theme_intensity') || '0'),
     themeBrightness: parseInt(localStorage.getItem('moodex_theme_brightness') || '0'),
+    // Theme card picked in Settings > Theme; older installs map from the old mode toggle.
+    themePreset: (() => {
+      try {
+        const v = localStorage.getItem('moodex_theme_preset');
+        if (['classic', 'dark', 'black', 'grey', 'light', 'system', 'album'].includes(v)) return v;
+        const m = localStorage.getItem('moodex_theme_mode');
+        // Fresh installs start on Classic; older ones keep the closest match to their look.
+        const p = !m ? 'classic' : m === 'light' ? 'light' : m === 'auto' ? 'album' : (parseInt(localStorage.getItem('moodex_theme_brightness') || '0', 10) < 25 ? 'black' : 'classic');
+        localStorage.setItem('moodex_theme_preset', p);
+        if (p === 'black') localStorage.setItem('moodex_theme_brightness', '50');
+        return p;
+      } catch (_) { return 'classic'; }
+    })(),
+    accentFromCover: localStorage.getItem('moodex_accent_from_cover') === '1',
+    themeContrast: localStorage.getItem('moodex_theme_contrast') === '1',
     trEnabled: localStorage.getItem('moodex_tr_enabled') === 'true',
     trLang: localStorage.getItem('moodex_tr_lang') || 'en',
     lyricsTranslationLang: localStorage.getItem('moodex_tr_lang') || 'en',
@@ -1089,6 +1108,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         setToken('--md-sys-color-outline-variant', '#CAC4D0');
       }
     } else {
+      // Dark presets differ only in their surfaces; Brightness fine-tunes around each preset.
+      const pk = ['dark', 'black', 'grey'].includes(state.themePreset) ? state.themePreset : 'classic';
+      const fine = (v) => Math.max(0, Math.min(100, Math.round(v * (0.6 + br * 0.8))));
+      const S = (v, hue, sat, B) => {
+        if (pk === 'black') return v <= 8 ? '#000000' : hslToHex(hue, Math.min(sat, 10), fine(v * 0.62));
+        if (pk === 'grey') return hslToHex(hue, Math.min(sat, 5), fine(v + 8));
+        if (pk === 'dark') return hslToHex(sat > 0 ? hue : 222, Math.max(Math.min(sat, 30), 13), fine(v + 5));
+        // Classic: the Melodix deep-blue night unless the accent already tints the surfaces.
+        return sat > 0 ? hslToHex(hue, sat, fine(v)) : hslToHex(224, 38, fine(v));
+      };
       if (isMonochrome) {
         const B = (v) => Math.max(0, Math.min(100, Math.round(v * (br * 2))));
         setToken('--md-sys-color-primary', '#FFFFFF');
@@ -1100,15 +1129,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         setToken('--md-sys-color-on-secondary-container', '#FFFFFF');
         setToken('--md-sys-color-tertiary', '#D0D0D0');
         setSurfaceToken('--md-sys-color-tertiary-container', hslToHex(0, 0, B(24)));
-        setToken('--md-sys-color-background', hslToHex(0, 0, B(7)));
-        setToken('--md-sys-color-surface', hslToHex(0, 0, B(7)));
-        setToken('--md-sys-color-surface-dim', hslToHex(0, 0, B(7)));
-        setToken('--md-sys-color-surface-bright', hslToHex(0, 0, B(19)));
-        setToken('--md-sys-color-surface-container-lowest', hslToHex(0, 0, B(5)));
-        setToken('--md-sys-color-surface-container-low', hslToHex(0, 0, B(10)));
-        setToken('--md-sys-color-surface-container', hslToHex(0, 0, B(13)));
-        setToken('--md-sys-color-surface-container-high', hslToHex(0, 0, B(16)));
-        setToken('--md-sys-color-surface-container-highest', hslToHex(0, 0, B(20)));
+        setToken('--md-sys-color-background', S(7, 0, 0, B));
+        setToken('--md-sys-color-surface', S(7, 0, 0, B));
+        setToken('--md-sys-color-surface-dim', S(7, 0, 0, B));
+        setToken('--md-sys-color-surface-bright', S(19, 0, 0, B));
+        setToken('--md-sys-color-surface-container-lowest', S(5, 0, 0, B));
+        setToken('--md-sys-color-surface-container-low', S(10, 0, 0, B));
+        setToken('--md-sys-color-surface-container', S(13, 0, 0, B));
+        setToken('--md-sys-color-surface-container-high', S(16, 0, 0, B));
+        setToken('--md-sys-color-surface-container-highest', S(20, 0, 0, B));
         setToken('--md-sys-color-on-surface', '#FFFFFF');
         setToken('--md-sys-color-on-surface-variant', '#CFCFCF');
         setToken('--md-sys-color-outline', '#8A8A8A');
@@ -1133,15 +1162,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         setToken('--md-sys-color-tertiary', hslToHex(hTert, satLow2, 75));
         setToken('--md-sys-color-tertiary-container', hslToHex(hTert, satLow, 22));
         const B = (v) => Math.max(0, Math.min(100, Math.round(v * (br * 2))));
-        setToken('--md-sys-color-background', hslToHex(h, surfSat, B(7)));
-        setToken('--md-sys-color-surface', hslToHex(h, surfSat, B(8)));
-        setToken('--md-sys-color-surface-dim', hslToHex(h, surfSat, B(7)));
-        setToken('--md-sys-color-surface-bright', hslToHex(h, surfSat, B(24)));
-        setToken('--md-sys-color-surface-container-lowest', hslToHex(h, surfSat, B(5)));
-        setToken('--md-sys-color-surface-container-low', hslToHex(h, surfSat, B(10)));
-        setToken('--md-sys-color-surface-container', hslToHex(h, surfSat, B(13)));
-        setToken('--md-sys-color-surface-container-high', hslToHex(h, surfSat, B(16)));
-        setToken('--md-sys-color-surface-container-highest', hslToHex(h, surfSat, B(20)));
+        setToken('--md-sys-color-background', S(7, h, surfSat, B));
+        setToken('--md-sys-color-surface', S(8, h, surfSat, B));
+        setToken('--md-sys-color-surface-dim', S(7, h, surfSat, B));
+        setToken('--md-sys-color-surface-bright', S(24, h, surfSat, B));
+        setToken('--md-sys-color-surface-container-lowest', S(5, h, surfSat, B));
+        setToken('--md-sys-color-surface-container-low', S(10, h, surfSat, B));
+        setToken('--md-sys-color-surface-container', S(13, h, surfSat, B));
+        setToken('--md-sys-color-surface-container-high', S(16, h, surfSat, B));
+        setToken('--md-sys-color-surface-container-highest', S(20, h, surfSat, B));
         setToken('--md-sys-color-on-surface', '#e2e2e9');
         setToken('--md-sys-color-on-surface-variant', '#c4c6d0');
         setToken('--md-sys-color-outline', '#8e9099');
@@ -1711,6 +1740,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.body.setAttribute('data-theme', mode);
     document.body.classList.toggle('theme-dark', mode === 'dark');
     document.body.classList.toggle('intensity-zero', state.themeIntensity < 8);
+    // Accent strong enough to colour things like the sidebar pill.
+    document.body.classList.toggle('accent-vivid', intensity >= 30);
+    document.documentElement.style.setProperty('--accent-raw', hexColor);
     onEffectiveModeChanged(mode);
     if (el.themeSwatches) {
       el.themeSwatches.forEach(sw => sw.classList.toggle('active', !!(state.themeAccent && sw.dataset.color && sw.dataset.color.toLowerCase() === state.themeAccent.toLowerCase())));
@@ -1749,7 +1781,40 @@ document.addEventListener('DOMContentLoaded', async () => {
     refreshCachedThemeColors();
   }
 
+  // Theme cards: which light/dark mode each preset runs in.
+  const systemPrefersDark = () => !window.matchMedia || window.matchMedia('(prefers-color-scheme: dark)').matches;
+  function resolvePresetMode(p) {
+    if (p === 'light') return 'light';
+    if (p === 'album') return 'auto';
+    if (p === 'system') return systemPrefersDark() ? 'dark' : 'light';
+    return 'dark';
+  }
+
   function updateThemeFromState() {
+    // An accent picked while on Album leaves Album for the matching fixed theme.
+    if (state.themePreset === 'album' && state.themeMode !== 'auto') {
+      state.themePreset = state.themeMode === 'light' ? 'light' : 'classic';
+      try { localStorage.setItem('moodex_theme_preset', state.themePreset); } catch (_) { }
+    }
+    state.themeMode = resolvePresetMode(state.themePreset);
+    try { localStorage.setItem('moodex_theme_mode', state.themeMode); } catch (_) { }
+    document.body.dataset.themePreset = state.themePreset;
+    document.documentElement.classList.toggle('theme-hc', !!state.themeContrast);
+    if (typeof syncThemeStudio === 'function') syncThemeStudio();
+
+    // "Accent from album art": keep the chosen theme, borrow only the cover colour.
+    if (state.themeMode !== 'auto' && state.accentFromCover && state.currentTrack) {
+      const cover = (typeof getTrackThumbUrl === 'function' ? getTrackThumbUrl(state.currentTrack) : state.currentTrack.thumbnail) || '';
+      if (cover) {
+        const mode = state.themeMode;
+        analyzeCover(cover).then((a) => {
+          if (!state.accentFromCover || state.themeMode !== mode) return;
+          applyTheme(a.accent, mode, Math.max(state.themeIntensity, 45), state.themeBrightness, a.accent2, false);
+        });
+        return;
+      }
+    }
+
     if (state.themeMode === 'auto') {
       const coverThumb = (state.currentTrack && (typeof getTrackThumbUrl === 'function' ? getTrackThumbUrl(state.currentTrack) : state.currentTrack.thumbnail)) || '';
       if (coverThumb) {
@@ -15507,6 +15572,144 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
+  // ---- Theme studio: preset cards + "Make it yours" extras ----
+  var THEME_PRESETS = [
+    { id: 'classic', name: 'Classic', desc: 'The original Melodix deep-blue night.' },
+    { id: 'dark', name: 'Dark', desc: 'Layered slate surfaces with real depth.' },
+    { id: 'black', name: 'Black', desc: 'True black, made for OLED screens.' },
+    { id: 'grey', name: 'Grey', desc: 'Soft graphite, easy on the eyes.' },
+    { id: 'light', name: 'Light', desc: 'Bright and crisp for daytime.' },
+    { id: 'system', name: 'System', desc: 'Follows Windows light or dark mode.' },
+    { id: 'album', name: 'Album', desc: 'Colours flow from the cover that is playing.' }
+  ];
+
+  // One mini app mock-up; the palette class decides its colours.
+  function themePreviewLayer(pal) {
+    return `<span class="tp-layer pal-${pal}"><span class="tp-side"><i class="tp-pill"></i><i class="tp-line tp-line-a"></i><i class="tp-line"></i><i class="tp-line"></i><i class="tp-line"></i></span>`
+      + `<span class="tp-main"><i class="tp-title"></i><span class="tp-chips"><i></i><i></i><i></i><i></i></span><span class="tp-tiles"><i></i><i></i><i></i></span></span></span>`;
+  }
+
+  function renderThemeStudio() {
+    const grid = document.getElementById('theme-preset-grid');
+    if (!grid || grid.childElementCount) return;
+    const tr = (x) => (typeof t === 'function' ? t(x) : x);
+    grid.innerHTML = THEME_PRESETS.map((p) => {
+      const layers = p.id === 'system' ? themePreviewLayer('dark') + themePreviewLayer('light') : themePreviewLayer(p.id);
+      return `<button type="button" class="tp-card" data-preset="${p.id}" role="radio" aria-checked="false">`
+        + `<span class="tp-preview tp-prev-${p.id}">${layers}<span class="tp-check" aria-hidden="true"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="5 12.5 10 17.5 19 7.5"/></svg></span></span>`
+        + `<span class="tp-name">${escapeHtml(tr(p.name))}</span><span class="tp-desc">${escapeHtml(tr(p.desc))}</span></button>`;
+    }).join('');
+    grid.addEventListener('click', (e) => {
+      const card = e.target.closest('.tp-card');
+      if (card) setThemePreset(card.dataset.preset, e);
+    });
+  }
+
+  // Keep cards, switches and the preview accent in step with state.
+  function syncThemeStudio() {
+    try {
+      const grid = document.getElementById('theme-preset-grid');
+      if (!grid) return;
+      grid.querySelectorAll('.tp-card').forEach((c) => {
+        const on = c.dataset.preset === state.themePreset;
+        c.classList.toggle('active', on);
+        c.setAttribute('aria-checked', on ? 'true' : 'false');
+      });
+      grid.style.setProperty('--tp-accent', state.themeAccent || '#2E9BFF');
+      const a = document.getElementById('btn-accent-from-cover');
+      if (a) a.classList.toggle('active', !!state.accentFromCover);
+      const c = document.getElementById('btn-theme-contrast');
+      if (c) c.classList.toggle('active', !!state.themeContrast);
+    } catch (_) { }
+  }
+
+  // Switch preset with a circular reveal that grows from the clicked card.
+  function setThemePreset(id, ev) {
+    if (!THEME_PRESETS.some((p) => p.id === id)) return;
+    if (id === state.themePreset) { syncThemeStudio(); return; }
+    const apply = () => {
+      state.themePreset = id;
+      // Each preset starts from its own default tone; the slider then fine-tunes it.
+      state.themeBrightness = 50;
+      try {
+        localStorage.setItem('moodex_theme_preset', id);
+        localStorage.setItem('moodex_theme_brightness', '50');
+      } catch (_) { }
+      updateThemeFromState();
+    };
+    const calm = document.body.classList.contains('reduce-motion') || document.body.classList.contains('perf');
+    if (!document.startViewTransition || calm) { apply(); return; }
+    const x = ev && ev.clientX ? ev.clientX : window.innerWidth / 2;
+    const y = ev && ev.clientY ? ev.clientY : window.innerHeight / 2;
+    const r = Math.hypot(Math.max(x, window.innerWidth - x), Math.max(y, window.innerHeight - y));
+    const vt = document.startViewTransition(apply);
+    vt.ready.then(() => {
+      document.documentElement.animate(
+        { clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${r}px at ${x}px ${y}px)`] },
+        { duration: 700, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)', pseudoElement: '::view-transition-new(root)' }
+      );
+    }).catch(() => { });
+  }
+  window.__melodixSetThemePreset = setThemePreset;
+
+  renderThemeStudio();
+  syncThemeStudio();
+
+  // Windows switched light/dark: follow it when on System.
+  if (window.matchMedia) {
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const onScheme = () => { if (state.themePreset === 'system') updateThemeFromState(); };
+    if (mq.addEventListener) mq.addEventListener('change', onScheme); else if (mq.addListener) mq.addListener(onScheme);
+  }
+
+  const btnAccentFromCover = document.getElementById('btn-accent-from-cover');
+  if (btnAccentFromCover) {
+    btnAccentFromCover.addEventListener('click', () => {
+      state.accentFromCover = !state.accentFromCover;
+      try { localStorage.setItem('moodex_accent_from_cover', state.accentFromCover ? '1' : '0'); } catch (_) { }
+      if (state.accentFromCover && state.themePreset === 'album') state.themePreset = 'classic';
+      updateThemeFromState();
+    });
+  }
+
+  const btnThemeContrast = document.getElementById('btn-theme-contrast');
+  if (btnThemeContrast) {
+    btnThemeContrast.addEventListener('click', () => {
+      state.themeContrast = !state.themeContrast;
+      try { localStorage.setItem('moodex_theme_contrast', state.themeContrast ? '1' : '0'); } catch (_) { }
+      updateThemeFromState();
+    });
+  }
+
+  const btnThemeReset = document.getElementById('btn-theme-reset');
+  if (btnThemeReset) {
+    btnThemeReset.addEventListener('click', (e) => {
+      state.themeAccent = '#2E9BFF';
+      state.themeIntensity = 0;
+      state.paletteStyle = 'classic';
+      state.accentFromCover = false;
+      state.themeContrast = false;
+      try {
+        localStorage.setItem('moodex_theme_accent', state.themeAccent);
+        localStorage.setItem('moodex_theme_intensity', '0');
+        localStorage.setItem('moodex_palette_style', 'classic');
+        localStorage.setItem('moodex_accent_from_cover', '0');
+        localStorage.setItem('moodex_theme_contrast', '0');
+      } catch (_) { }
+      const pl = document.getElementById('palette-style-trigger-label');
+      if (pl) pl.textContent = 'Classic';
+      document.querySelectorAll('#palette-style-menu .m3-dropdown-option').forEach((o) => o.classList.toggle('selected', o.dataset.value === 'classic'));
+      if (state.themePreset === 'classic') {
+        state.themeBrightness = 50;
+        try { localStorage.setItem('moodex_theme_brightness', '50'); } catch (_) { }
+        updateThemeFromState();
+      } else {
+        setThemePreset('classic', e);
+      }
+      showToast('Theme reset to Classic', 'success');
+    });
+  }
+
   if (el.themeSwatches) {
     el.themeSwatches.forEach(sw => {
       sw.addEventListener('click', () => {
@@ -18391,8 +18594,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!d) return;
     function setSwitch(btn, on) { if (btn && btn.classList.contains('active') !== !!on) btn.click(); }
     if (d.theme) {
-      const modeBtn = document.querySelector(`.theme-mode-btn[data-theme-mode="${d.theme.b < 50 ? 'dark' : 'light'}"]`);
-      if (modeBtn) modeBtn.click();
+      if (window.__melodixSetThemePreset) window.__melodixSetThemePreset(d.theme.b < 50 ? 'classic' : 'light');
       const sH = document.getElementById('slider-theme-hue');
       if (sH && d.theme.h !== undefined) { sH.value = d.theme.h; sH.dispatchEvent(new Event('input', { bubbles: true })); }
       const sB = document.getElementById('slider-theme-brightness');
@@ -19150,7 +19352,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   (function initUpdateUI() {
     const api = window.electronAPI;
     const $ = (id) => document.getElementById(id);
-    let currentAppVersion = '2.0.4';
+    let currentAppVersion = '2.0.6';
     if (api && api.getAppVersion) {
       api.getAppVersion().then((v) => {
         if (v) {
@@ -19158,6 +19360,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           const a = $('about-version'); if (a) a.textContent = 'Version ' + v;
           const t = document.querySelector('.settings-version-tag'); if (t) t.textContent = 'v' + v;
           if (typeof window.refreshAboutLiner === 'function') window.refreshAboutLiner(v);
+          if (typeof setUpdState === 'function' && upd && upd.state === 'idle') setUpdState('idle');
         }
       }).catch(() => { });
     } else {
@@ -19281,25 +19484,132 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Small "Update available" pill at the top right of Home. Shown for any
     // newer version found (background or manual check); clicking it opens
     // the update sheet. It never pops up on its own.
+    const tr = (x) => (typeof t === 'function' ? t(x) : x);
+    const homeBtnEnabled = () => { try { return localStorage.getItem('moodex_home_update_btn') !== '0'; } catch (_) { return true; } };
+
+    // Floating Home button: fixed to the bottom-left of the main content area.
+    function placeUpdatePill() {
+      const pill = document.getElementById('home-update-pill');
+      const main = document.getElementById('main-content');
+      if (!pill || !main || pill.hidden) return;
+      const r = main.getBoundingClientRect();
+      pill.style.left = `${Math.round(r.left + 20)}px`;
+      pill.style.bottom = `${Math.round(window.innerHeight - r.bottom + 20)}px`;
+    }
+    window.addEventListener('resize', placeUpdatePill);
+
+    let pillCompactTimer = null;
     function showUpdatePill() {
       const pill = document.getElementById('home-update-pill');
       if (!pill || !latestUpdateInfo || !latestUpdateInfo.version) return;
+      if (!homeBtnEnabled()) { pill.hidden = true; pill.classList.remove('is-shown'); return; }
       const ver = String(latestUpdateInfo.version).replace(/^v/i, '');
       const label = pill.querySelector('.home-update-pill-text');
-      if (label) {
-        const txt = isUpdateDownloaded ? 'Update ready' : 'Update available';
-        label.textContent = typeof t === 'function' ? t(txt) : txt;
-      }
-      pill.title = (isUpdateDownloaded ? 'Melodix ' + ver + ' is ready to install' : 'Melodix ' + ver + ' is available') + ' - click for details';
+      if (label) label.textContent = tr(isUpdateDownloaded ? 'New update is ready' : 'New update available');
+      const verEl = document.getElementById('home-update-ver');
+      if (verEl) verEl.textContent = 'v' + ver;
+      pill.title = (isUpdateDownloaded ? 'Melodix ' + ver + ' is ready - click to restart and update' : 'Melodix ' + ver + ' is available - click for details');
       pill.classList.toggle('is-ready', isUpdateDownloaded);
       pill.hidden = false;
+      placeUpdatePill();
+      pill.classList.remove('is-compact');
       requestAnimationFrame(() => pill.classList.add('is-shown'));
+      // After a moment it tucks into a tiny orb; hovering opens it again.
+      clearTimeout(pillCompactTimer);
+      pillCompactTimer = setTimeout(() => pill.classList.add('is-compact'), 7000);
     }
 
     const homeUpdatePill = document.getElementById('home-update-pill');
     if (homeUpdatePill) {
       homeUpdatePill.addEventListener('click', () => {
-        if (latestUpdateInfo) populateOtaUpdateSheet(latestUpdateInfo);
+        if (!latestUpdateInfo) return;
+        // Downloaded already: one click restarts into the new version.
+        if (isUpdateDownloaded && window.electronAPI && window.electronAPI.installUpdateNow) {
+          showToast('Restarting to update Melodix', 'info');
+          setTimeout(() => window.electronAPI.installUpdateNow(), 700);
+          return;
+        }
+        populateOtaUpdateSheet(latestUpdateInfo);
+      });
+    }
+
+    const homeToggle = document.getElementById('btn-home-update-toggle');
+    if (homeToggle) {
+      homeToggle.classList.toggle('active', homeBtnEnabled());
+      homeToggle.addEventListener('click', () => {
+        const on = !homeToggle.classList.contains('active');
+        homeToggle.classList.toggle('active', on);
+        try { localStorage.setItem('moodex_home_update_btn', on ? '1' : '0'); } catch (_) { }
+        if (on && latestUpdateInfo) showUpdatePill();
+        else if (homeUpdatePill) { homeUpdatePill.classList.remove('is-shown'); setTimeout(() => { if (!homeBtnEnabled()) homeUpdatePill.hidden = true; }, 350); }
+      });
+    }
+
+    // ---- Updates card in Settings > Startup & window ----
+    const upd = {
+      card: $('upd-card'), title: $('upd-title'), sub: $('upd-sub'), pct: $('upd-pct'),
+      cur: $('upd-ver-cur'), next: $('upd-ver-new'), main: $('upd-btn-main'), notes: $('upd-btn-notes'),
+      state: 'idle', checkedAt: 0, downloading: false
+    };
+    const RING_LEN = 2 * Math.PI * 28;
+    function agoText(ts) {
+      if (!ts) return '';
+      const s = Math.floor((Date.now() - ts) / 1000);
+      if (s < 60) return tr('Checked just now');
+      if (s < 3600) return tr('Checked') + ' ' + Math.floor(s / 60) + 'm ' + tr('ago');
+      return tr('Checked') + ' ' + Math.floor(s / 3600) + 'h ' + tr('ago');
+    }
+    function setUpdState(st, pct) {
+      if (!upd.card) return;
+      upd.state = st;
+      upd.card.dataset.state = st;
+      const newVer = latestUpdateInfo && latestUpdateInfo.version ? 'v' + String(latestUpdateInfo.version).replace(/^v/i, '') : '';
+      if (upd.cur) upd.cur.textContent = 'v' + currentAppVersion;
+      if (upd.next) upd.next.textContent = newVer;
+      const fill = upd.card.querySelector('.upd-ring-fill');
+      const p = Math.max(0, Math.min(100, pct || 0));
+      if (fill) fill.style.strokeDashoffset = String(st === 'downloading' ? RING_LEN * (1 - p / 100) : (st === 'ready' ? 0 : RING_LEN));
+      if (upd.pct) upd.pct.textContent = st === 'downloading' ? `${Math.round(p)}%` : '';
+      const T = {
+        idle: [tr('Melodix is up to date'), upd.checkedAt ? `v${currentAppVersion} - ${agoText(upd.checkedAt)}` : tr('You are on') + ` v${currentAppVersion}`, tr('Check for updates')],
+        checking: [tr('Looking for updates'), tr('Asking GitHub for the newest release'), tr('Checking...')],
+        available: [tr('A new version is here'), tr('Fresh fixes and features are ready to download'), canNativeInstall ? tr('Update now') : tr('Open download page')],
+        downloading: [tr('Downloading update'), `${newVer} - ${Math.round(p)}%`, tr('Downloading...')],
+        ready: [tr('Update ready to install'), tr('Restart Melodix to finish - it only takes a moment'), tr('Restart & update')],
+        error: [tr('Could not check for updates'), tr('Check your connection and try again'), tr('Try again')]
+      }[st] || [];
+      if (upd.title) upd.title.textContent = T[0] || '';
+      if (upd.sub) upd.sub.textContent = T[1] || '';
+      if (upd.main) {
+        upd.main.textContent = T[2] || '';
+        upd.main.disabled = st === 'checking' || st === 'downloading';
+      }
+      if (upd.notes) upd.notes.hidden = !(latestUpdateInfo && (st === 'available' || st === 'ready' || st === 'downloading'));
+    }
+    setUpdState('idle');
+    // Keep "Checked 5m ago" fresh while the card is on screen.
+    setInterval(() => { if (upd.state === 'idle' && upd.checkedAt) setUpdState('idle'); }, 60000);
+
+    if (upd.notes) upd.notes.addEventListener('click', () => { if (latestUpdateInfo) populateOtaUpdateSheet(latestUpdateInfo); });
+    if (upd.main) {
+      upd.main.addEventListener('click', () => {
+        const api2 = window.electronAPI;
+        if (upd.state === 'available') {
+          if (!canNativeInstall) {
+            if (latestUpdateInfo && latestUpdateInfo.htmlUrl) window.open(latestUpdateInfo.htmlUrl, '_blank');
+            return;
+          }
+          upd.downloading = true;
+          setUpdState('downloading', 0);
+          if (api2 && api2.updateAction) api2.updateAction('now');
+        } else if (upd.state === 'ready') {
+          setUpdState('ready');
+          upd.main.disabled = true;
+          upd.main.textContent = tr('Restarting...');
+          if (api2 && api2.installUpdateNow) setTimeout(() => api2.installUpdateNow(), 500);
+        } else if (upd.state === 'idle' || upd.state === 'error') {
+          startManualCheck(true);
+        }
       });
     }
 
@@ -19331,6 +19641,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       try {
         if (!navigator.onLine) {
           restoreButton();
+          setUpdState('error');
           showToast('Could not check for updates', 'error');
           return;
         }
@@ -19349,25 +19660,34 @@ document.addEventListener('DOMContentLoaded', async () => {
             htmlUrl: fallbackReleaseUrl,
             canInstall: false
           };
-          populateOtaUpdateSheet(latestUpdateInfo);
+          if (!panelCheck) populateOtaUpdateSheet(latestUpdateInfo);
           showUpdatePill();
           restoreButton();
+          setUpdState('available');
         } else {
           restoreButton();
+          upd.checkedAt = Date.now();
+          setUpdState('idle');
           showToast('You are using the latest version of Melodix!', 'success');
         }
       } catch (err) {
         restoreButton();
+        setUpdState('error');
         showToast('Could not check for updates', 'error');
       }
     }
 
-    if (btn) {
-      btn.addEventListener('click', async () => {
+    // fromPanel: started from the Updates card, which shows the result itself.
+    let panelCheck = false;
+    async function startManualCheck(fromPanel) {
         if (manualUpdateCheck) return;
         manualUpdateCheck = true;
-        btn.disabled = true;
-        btn.innerHTML = `<svg class="g-spinner" style="width:14px;height:14px;margin-right:6px;" viewBox="0 0 48 48"><circle cx="24" cy="24" r="20"/></svg><span>Checking...</span>`;
+        panelCheck = !!fromPanel;
+        setUpdState('checking');
+        if (btn) {
+          btn.disabled = true;
+          btn.innerHTML = `<svg class="g-spinner" style="width:14px;height:14px;margin-right:6px;" viewBox="0 0 48 48"><circle cx="24" cy="24" r="20"/></svg><span>Checking...</span>`;
+        }
 
         if (!api || !api.checkForUpdates) {
           checkDirectFromRenderer();
@@ -19390,8 +19710,8 @@ document.addEventListener('DOMContentLoaded', async () => {
           if (checkTimeoutId) clearTimeout(checkTimeoutId);
           checkDirectFromRenderer();
         }
-      });
     }
+    if (btn) btn.addEventListener('click', () => startManualCheck(false));
 
     if (api && api.onUpdateAvailable) {
       api.onUpdateAvailable(async (info) => {
@@ -19422,12 +19742,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         showUpdatePill();
-        if (wasManual) populateOtaUpdateSheet(latestUpdateInfo);
+        if (!isUpdateDownloaded && !upd.downloading) setUpdState('available');
+        if (wasManual && !panelCheck) populateOtaUpdateSheet(latestUpdateInfo);
       });
     }
 
     const onDownloaded = (info) => {
       isUpdateDownloaded = true;
+      upd.downloading = false;
       if (info && !latestUpdateInfo) {
         latestUpdateInfo = { ...info };
       }
@@ -19444,6 +19766,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         // "Update ready".
         showUpdatePill();
       }
+      setUpdState('ready');
     };
 
     if (api && api.onUpdateDownloaded) {
@@ -19457,6 +19780,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       api.onUpdateNotAvailable(() => {
         const wasManual = manualUpdateCheck;
         restoreButton();
+        upd.checkedAt = Date.now();
+        setUpdState('idle');
         if (wasManual) {
           showToast('You are using the latest version of Melodix!', 'success');
         }
@@ -19467,6 +19792,13 @@ document.addEventListener('DOMContentLoaded', async () => {
       api.onUpdateError(() => {
         const wasManual = manualUpdateCheck;
         restoreButton();
+        if (upd.downloading) {
+          upd.downloading = false;
+          setUpdState('available');
+          showToast('Update download failed - try again', 'error');
+        } else if (wasManual) {
+          setUpdState('error');
+        }
         if (isWaitingToRestart) {
           isWaitingToRestart = false;
           const spinnerBox = document.getElementById('update-center-spinner');
@@ -19494,6 +19826,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         const label = document.getElementById('update-progress-label');
         if (fill) fill.style.width = (d?.percent || 0) + '%';
         if (label) label.textContent = (d?.percent || 0) + '%';
+        if (!isUpdateDownloaded) {
+          upd.downloading = true;
+          setUpdState('downloading', d?.percent || 0);
+        }
         // While the user waits after "Update", show how far the download is.
         const spinLabel = document.getElementById('update-spinner-label');
         if (spinLabel && isWaitingToRestart) {
@@ -19540,6 +19876,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         isWaitingToRestart = true;
+        upd.downloading = true;
+        setUpdState('downloading', 0);
         const spinLabel = document.getElementById('update-spinner-label');
         if (spinLabel) spinLabel.textContent = typeof t === 'function' ? t('Downloading update...') : 'Downloading update...';
         if (api && api.updateAction) {
@@ -21934,7 +22272,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (typeof showToast === 'function') showToast('No playlists to export', 'error');
       return;
     }
-    let appVer = '2.0.4';
+    let appVer = '2.0.6';
     try {
       if (window.electronAPI && window.electronAPI.getAppVersion) {
         const v = await window.electronAPI.getAppVersion();
