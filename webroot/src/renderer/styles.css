@@ -132,9 +132,8 @@ button, .chip-btn, .mix-card, .track-row, .rail-icon-btn, .theme-mode-btn,
 .theme-swatch, .titlebar-btn, .format-chip, .quality-chip, .hq-preset-chip {
   touch-action: manipulation;
   transform-origin: center;
-  transform: translateZ(0);
-  backface-visibility: hidden;
-  -webkit-backface-visibility: hidden;
+  /* No translateZ(0)/backface-visibility here: it gave every button and track row
+     its own GPU layer, and re-layering hundreds of them cost time every frame. */
   image-rendering: -webkit-optimize-contrast;
   transition: background-color var(--transition-hover-out), color var(--transition-hover-out), transform 0.12s cubic-bezier(0.2, 0, 0, 1), border-radius 0.15s cubic-bezier(0.2, 0, 0, 1), opacity var(--transition-fast), filter var(--transition-fast);
 }
@@ -12951,3 +12950,44 @@ body:not(.is-playing)::after { animation-play-state: paused !important; }
 .home-update-pill:hover .home-update-pill-dot, .home-update-pill:hover .home-update-pill-ico { animation-iteration-count: infinite !important; }
 .upd-card[data-state="available"] .upd-ico-new { animation-iteration-count: 3 !important; }
 .upd-card[data-state="ready"] .upd-core { animation-iteration-count: 4 !important; }
+
+/* Full-screen volume: a speaker button with a level ring that opens into a slider on hover/focus/scroll */
+.tvk-vol-group {
+  display: inline-flex; align-items: center; gap: 0; height: 40px; padding: 3px;
+  border-radius: 999px; background: rgba(255, 255, 255, 0); 
+  transition: gap 0.4s cubic-bezier(0.2, 0.9, 0.3, 1.1), padding 0.4s cubic-bezier(0.2, 0.9, 0.3, 1.1), background-color 0.3s ease, box-shadow 0.3s ease;
+}
+.tvk-vol-group .tvk-volume-slider-wrapper.volume-slider-wrapper {
+  width: 0; opacity: 0; overflow: hidden; pointer-events: none;
+  transition: width 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.1), opacity 0.25s ease;
+}
+.tvk-vol-group .tvk-volume-pct {
+  max-width: 0; min-width: 0; opacity: 0; overflow: hidden; white-space: nowrap;
+  transition: max-width 0.4s cubic-bezier(0.2, 0.9, 0.3, 1.1), opacity 0.2s ease;
+}
+.tvk-vol-group:hover, .tvk-vol-group:focus-within, .tvk-vol-group.is-adjusting {
+  gap: 10px; padding: 3px 14px 3px 3px;
+  background: rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12), 0 8px 24px rgba(0, 0, 0, 0.25);
+}
+.tvk-vol-group:hover .tvk-volume-slider-wrapper.volume-slider-wrapper,
+.tvk-vol-group:focus-within .tvk-volume-slider-wrapper.volume-slider-wrapper,
+.tvk-vol-group.is-adjusting .tvk-volume-slider-wrapper.volume-slider-wrapper {
+  width: clamp(120px, 14vw, 180px); opacity: 1; pointer-events: auto; overflow: visible;
+}
+.tvk-vol-group:hover .tvk-volume-pct,
+.tvk-vol-group:focus-within .tvk-volume-pct,
+.tvk-vol-group.is-adjusting .tvk-volume-pct { max-width: 48px; min-width: 36px; opacity: 1; }
+/* Level ring: shows the volume while the slider is tucked away */
+.tvk-vol-group .tvk-volume-btn { position: relative; }
+.tvk-vol-group .tvk-volume-btn::before {
+  content: ""; position: absolute; inset: -3px; border-radius: 50%; pointer-events: none;
+  background: conic-gradient(#fff calc(var(--vol, 0.85) * 360deg), rgba(255, 255, 255, 0.16) 0);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 calc(100% - 2px));
+          mask: radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 calc(100% - 2px));
+  transition: opacity 0.3s ease;
+}
+.tvk-vol-group:hover .tvk-volume-btn::before,
+.tvk-vol-group:focus-within .tvk-volume-btn::before,
+.tvk-vol-group.is-adjusting .tvk-volume-btn::before { opacity: 0; }
+body.reduce-motion .tvk-vol-group, body.reduce-motion .tvk-vol-group * { transition-duration: 0.01s !important; }

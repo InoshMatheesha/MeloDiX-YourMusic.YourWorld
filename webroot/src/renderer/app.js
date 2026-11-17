@@ -3198,9 +3198,19 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (document.body.classList.contains('perf') && timestamp - lastFrameTime < 33) return;
       lastFrameTime = timestamp;
 
-      const isVisualizerVisible = miniCanvas && miniCanvas.offsetParent !== null && !document.hidden;
-      const isTvkVisualizerVisible = state.isTvKaraokeOpen && tvkCanvas && tvkCanvas.offsetParent !== null && !document.hidden;
-      const isBehindVizVisible = (document.body.classList.contains('bar-viz-behind') || isVizConnectedMode()) && localStorage.getItem('moodex_bar_wave') !== '0' && !document.body.classList.contains('mini') && !document.hidden;
+      // Visibility checks use offsetParent, which forces a style recalc; reading
+      // them every frame cost a full recalc per frame, so refresh 4x a second.
+      if (!renderLoop._visAt || timestamp - renderLoop._visAt > 250 || timestamp < renderLoop._visAt) {
+        renderLoop._visAt = timestamp;
+        renderLoop._vis = {
+          viz: !!(miniCanvas && miniCanvas.offsetParent !== null),
+          tvk: !!(state.isTvKaraokeOpen && tvkCanvas && tvkCanvas.offsetParent !== null),
+          behind: (document.body.classList.contains('bar-viz-behind') || isVizConnectedMode()) && localStorage.getItem('moodex_bar_wave') !== '0' && !document.body.classList.contains('mini')
+        };
+      }
+      const isVisualizerVisible = renderLoop._vis.viz && !document.hidden;
+      const isTvkVisualizerVisible = state.isTvKaraokeOpen && renderLoop._vis.tvk && !document.hidden;
+      const isBehindVizVisible = renderLoop._vis.behind && !document.hidden;
       const needBassPulse = !!(state.vfx && state.vfx.bassPulse);
       const activeGap = document.querySelector('.lyric-line.lyric-gap.active');
 
@@ -13307,11 +13317,32 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       highlightPlayingRow();
       if (typeof syncHomeAmbientVisibility === 'function') syncHomeAmbientVisibility();
+      if (viewName === 'discover' && typeof prewarmHomeImages === 'function') prewarmHomeImages();
       updateFxVisibility();
       if (el.mainContent) updateFade(el.mainContent);
     });
     if (el.mainContent) updateFade(el.mainContent);
   }
+
+  // Decode Home shelf covers in idle time, so the first scroll down does not
+  // stall while off-screen rows (content-visibility) decode their images.
+  function prewarmHomeImages() {
+    const idle = window.requestIdleCallback || ((fn) => setTimeout(() => fn({ timeRemaining: () => 8 }), 200));
+    const imgs = [...document.querySelectorAll('#view-discover .sp-row img')].filter((i) => !i._warmed && i.src);
+    let n = 0;
+    const work = (deadline) => {
+      while (n < imgs.length && n < 200 && deadline.timeRemaining() > 2) {
+        const img = imgs[n++];
+        img._warmed = true;
+        if (img.decode) img.decode().catch(() => { });
+      }
+      if (n < imgs.length && n < 200) idle(work);
+    };
+    if (imgs.length) idle(work);
+  }
+  // Home shelves fill in after load; warm them once things settle.
+  setTimeout(prewarmHomeImages, 4000);
+  setTimeout(prewarmHomeImages, 12000);
 
   function applyStackedRadius(container, itemSelector, horizontal) {
     if (!container) return;
@@ -14568,6 +14599,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     const silent = state.isMuted || state.volume <= 0;
     if (on) on.classList.toggle('hidden', silent);
     if (off) off.classList.toggle('hidden', !silent);
+    // Level ring around the collapsed speaker button.
+    const group = document.getElementById('tvk-vol-group');
+    if (group) group.style.setProperty('--vol', String(silent ? 0 : state.volume));
   }
   (function initTvkVolume() {
     const slider = document.getElementById('tvk-volume-slider');
@@ -14588,6 +14622,13 @@ document.addEventListener('DOMContentLoaded', async () => {
       e.stopPropagation();
       const base = state.isMuted ? 0 : state.volume;
       setVolume(Math.round((base + (e.deltaY < 0 ? 0.05 : -0.05)) * 100) / 100);
+      // Flash the slider open so the change is visible.
+      const group = document.getElementById('tvk-vol-group');
+      if (group) {
+        group.classList.add('is-adjusting');
+        clearTimeout(group._adjTimer);
+        group._adjTimer = setTimeout(() => group.classList.remove('is-adjusting'), 1200);
+      }
     }, { passive: false });
     syncTvkVolumeUI();
   })();
@@ -17251,14 +17292,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     ctx.closePath();
     ctx.clip();
+    // Big now-playing cover: same morphing shape, but upright and only rewritten
+    // while the shape changes. Rewriting it every frame (to follow the spin)
+    // repainted the large image 60+ times a second.
     const heroPath = document.getElementById('m3-hero-shape-path');
-    if (heroPath && document.body.classList.contains('m3-hero-covers-on')) {
+    const heroKey = `${sh.e.toFixed(3)}|${m3c.from}|${m3c.to}|${m3c.hoverProgress.toFixed(2)}`;
+    if (heroPath && document.body.classList.contains('m3-hero-covers-on') && heroPath._key !== heroKey) {
+      heroPath._key = heroKey;
       let heroD = '';
       for (let k = 0; k <= K; k++) {
         const th = -Math.PI + (Math.PI * 2 * (k % K)) / K;
         const r = radiusAt(th);
-        const nx = Math.max(0, Math.min(1, 0.5 + (Math.cos(th + rot) * r) / (COVER_PX * 1.05)));
-        const ny = Math.max(0, Math.min(1, 0.5 + (Math.sin(th + rot) * r) / (COVER_PX * 1.05)));
+        const nx = Math.max(0, Math.min(1, 0.5 + (Math.cos(th) * r) / (COVER_PX * 1.05)));
+        const ny = Math.max(0, Math.min(1, 0.5 + (Math.sin(th) * r) / (COVER_PX * 1.05)));
         if (k === 0) heroD += `M ${nx.toFixed(4)} ${ny.toFixed(4)}`;
         else heroD += ` L ${nx.toFixed(4)} ${ny.toFixed(4)}`;
       }
@@ -17326,11 +17372,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     m3c.raf = 0;
     if (!m3cEnabled() || document.hidden) return;
 
-    // Frame budget: full speed only while morphing or hovering, 30 fps playing, ~12 fps paused.
+    // Frame budget: full display rate while playing, morphing or hovering (30 fps
+    // looked choppy on high-refresh screens); ~30 fps only while paused and still.
     const MS = window.MoodexShapes;
     const morphing = !!(MS && m3c.start && now - m3c.start < (MS.MORPH_MS || 0) + 60);
     const hoverMoving = Math.abs((m3c.isHovered ? 1 : 0) - m3c.hoverProgress) > 0.002;
-    const minGap = (morphing || hoverMoving) ? 0 : (state.isPlaying ? 33 : 80);
+    const minGap = (morphing || hoverMoving || state.isPlaying) ? 0 : 33;
     if (minGap && m3c.lastDraw && now - m3c.lastDraw < minGap) {
       m3c.raf = requestAnimationFrame(m3cLoop);
       return;
@@ -19520,7 +19567,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   (function initUpdateUI() {
     const api = window.electronAPI;
     const $ = (id) => document.getElementById(id);
-    let currentAppVersion = '2.0.8';
+    let currentAppVersion = '2.0.9';
     if (api && api.getAppVersion) {
       api.getAppVersion().then((v) => {
         if (v) {
@@ -22447,7 +22494,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (typeof showToast === 'function') showToast('No playlists to export', 'error');
       return;
     }
-    let appVer = '2.0.8';
+    let appVer = '2.0.9';
     try {
       if (window.electronAPI && window.electronAPI.getAppVersion) {
         const v = await window.electronAPI.getAppVersion();

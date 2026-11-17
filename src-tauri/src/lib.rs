@@ -246,7 +246,98 @@ fn set_autostart(_on: bool) -> bool {
 }
 
 /// Remember size, position and maximized state for the next launch.
+// ---------- mini player ----------
+// Mini mode shrinks the main window (the page switches to its mini layout at
+// <=520 CSS px), keeps it on top and docks it bottom-right. MINI_PREV holds
+// the normal position/size (x, y, w, h, maximized) to return to.
+static MINI_ON: AtomicBool = AtomicBool::new(false);
+static MINI_PREV: Mutex<Option<(i32, i32, u32, u32, bool)>> = Mutex::new(None);
+static MINI_LYRICS_H: Mutex<Option<f64>> = Mutex::new(None);
+
+/// Dock a window of the given logical size in the bottom-right of its monitor's work area.
+fn dock_bottom_right(window: &tauri::WebviewWindow, w: f64, h: f64) {
+    if let Ok(Some(m)) = window.current_monitor() {
+        let scale = m.scale_factor();
+        let area = m.work_area();
+        let margin = (16.0 * scale) as i32;
+        let x = area.position.x + area.size.width as i32 - (w * scale) as i32 - margin;
+        let y = area.position.y + area.size.height as i32 - (h * scale) as i32 - margin;
+        let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
+    }
+}
+
+#[tauri::command]
+fn toggle_mini_window(window: tauri::WebviewWindow) -> bool {
+    if !MINI_ON.load(Ordering::SeqCst) {
+        let maximized = window.is_maximized().unwrap_or(false);
+        let prev = match (window.outer_position(), window.inner_size()) {
+            (Ok(p), Ok(s)) => Some((p.x, p.y, s.width, s.height, maximized)),
+            _ => None,
+        };
+        *MINI_PREV.lock().unwrap() = prev;
+        *MINI_LYRICS_H.lock().unwrap() = None;
+        if maximized {
+            let _ = window.unmaximize();
+        }
+        MINI_ON.store(true, Ordering::SeqCst);
+        let _ = window.set_min_size(Some(tauri::LogicalSize::new(280.0, 115.0)));
+        let _ = window.set_size(tauri::LogicalSize::new(380.0, 160.0));
+        dock_bottom_right(&window, 380.0, 160.0);
+        let _ = window.set_always_on_top(true);
+        true
+    } else {
+        let _ = window.set_always_on_top(false);
+        let _ = window.set_min_size(Some(tauri::LogicalSize::new(900.0, 600.0)));
+        match MINI_PREV.lock().unwrap().take() {
+            Some((x, y, w, h, maximized)) => {
+                let _ = window.set_size(tauri::PhysicalSize::new(w.max(900), h.max(600)));
+                let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
+                if maximized {
+                    let _ = window.maximize();
+                }
+            }
+            None => {
+                let _ = window.set_size(tauri::LogicalSize::new(1200.0, 800.0));
+                let _ = window.center();
+            }
+        }
+        MINI_ON.store(false, Ordering::SeqCst);
+        false
+    }
+}
+
+/// Mini lyrics: grow the mini window to at least 360px tall (kept on screen), or shrink back.
+#[tauri::command]
+fn set_mini_lyrics(window: tauri::WebviewWindow, enabled: bool) -> bool {
+    if !MINI_ON.load(Ordering::SeqCst) {
+        return false;
+    }
+    let scale = window.scale_factor().unwrap_or(1.0);
+    let Ok(size) = window.inner_size() else { return false };
+    let (w, h) = (size.width as f64 / scale, size.height as f64 / scale);
+    if enabled {
+        let mut saved = MINI_LYRICS_H.lock().unwrap();
+        if saved.is_none() {
+            *saved = Some(h);
+        }
+        let _ = window.set_min_size(Some(tauri::LogicalSize::new(320.0, 240.0)));
+        let target = h.max(360.0);
+        let _ = window.set_size(tauri::LogicalSize::new(w, target));
+        dock_bottom_right(&window, w, target);
+    } else {
+        let back = MINI_LYRICS_H.lock().unwrap().take().unwrap_or(160.0);
+        let _ = window.set_min_size(Some(tauri::LogicalSize::new(280.0, 115.0)));
+        let _ = window.set_size(tauri::LogicalSize::new(w, back));
+        dock_bottom_right(&window, w, back);
+    }
+    true
+}
+
 fn save_geometry(w: &tauri::WebviewWindow) {
+    // The mini player's size is temporary; never remember it as the window size.
+    if MINI_ON.load(Ordering::SeqCst) {
+        return;
+    }
     if !desktop_flag("rememberWindow")
         || w.is_minimized().unwrap_or(false)
         || !w.is_visible().unwrap_or(true)
@@ -1295,6 +1386,8 @@ pub fn run() {
             pick_account_file,
             pick_account_save_path,
             storage_replace,
+            toggle_mini_window,
+            set_mini_lyrics,
         ])
         .setup(move |app| {
             let handle = app.handle().clone();

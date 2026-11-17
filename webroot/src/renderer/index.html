@@ -3093,7 +3093,7 @@
                       <div class="mx-sleeve-meta">
                         <span class="mx-sleeve-kicker">Melodix Records</span>
                         <span class="mx-sleeve-title">Melodix</span>
-                        <span class="mx-sleeve-sub" id="about-version">Version 2.0.8</span>
+                        <span class="mx-sleeve-sub" id="about-version">Version 2.0.9</span>
                       </div>
                     </div>
                   </div>
@@ -3157,7 +3157,7 @@
                   </svg>
                   Melodix made by MoOdY69...
                 </span>
-                <span class="settings-version-tag">v2.0.8</span>
+                <span class="settings-version-tag">v2.0.9</span>
               </div>
             </div>
           </div>
@@ -5102,6 +5102,8 @@
           <span class="time-label" id="tvk-time-duration">0:00</span>
         </div>
         <div class="tvk-volume-row" id="tvk-volume-row">
+          <!-- Collapsed to the speaker button; hover/focus/scroll opens the slider -->
+          <div class="tvk-vol-group" id="tvk-vol-group">
           <button class="tvk-volume-btn" id="btn-tvk-volume-mute" type="button" title="Mute or unmute"
             aria-label="Mute or unmute">
             <svg id="tvk-volume-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -5122,6 +5124,7 @@
               value="0.85" aria-label="Volume">
           </div>
           <span class="tvk-volume-pct" id="tvk-volume-pct">85%</span>
+          </div>
           <span class="tvk-volume-divider" aria-hidden="true"></span>
           <button class="tvk-queue-btn mq-toggle" id="btn-tvk-queue" type="button" title="Queue" aria-label="Queue"
             aria-expanded="false">

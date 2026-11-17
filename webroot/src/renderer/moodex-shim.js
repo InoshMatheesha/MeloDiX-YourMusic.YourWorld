@@ -150,8 +150,9 @@
     onMediaControl: function (cb) { listen('media-control', cb); },
 
     // --- mini player / lyrics window ---
-    toggleMiniWindow: resolveTo(false),
-    setMiniLyrics: resolveTo(false),
+    // Rust resizes the main window; the page switches to its mini layout by width.
+    toggleMiniWindow: function () { return invoke('toggle_mini_window').catch(resolveTo(false)); },
+    setMiniLyrics: function (on) { return invoke('set_mini_lyrics', { enabled: !!on }).catch(resolveTo(false)); },
 
     // --- welcome flow (index loads directly) ---
     welcomeFinish: noop,
