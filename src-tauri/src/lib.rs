@@ -1,5 +1,6 @@
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
@@ -18,6 +19,55 @@ struct AppState {
     update_info: Mutex<Option<serde_json::Value>>,
     // Set once update_action finishes downloading; read by install_update_now.
     installer_path: Mutex<Option<PathBuf>>,
+    // Splash -> main hand-off: when the splash opened, whether to maximize, and a once-guard.
+    splash_started: Mutex<Option<std::time::Instant>>,
+    reveal_maximized: AtomicBool,
+    revealed: AtomicBool,
+}
+
+// Minimum time the splash stays up so its intro animation can finish.
+const SPLASH_MIN_MS: u64 = 1700;
+// Show the main window anyway if the renderer never reports ready.
+const SPLASH_MAX_MS: u64 = 15000;
+
+// Fade the splash out and show the main window (runs once).
+fn reveal_main(app: &tauri::AppHandle) {
+    let Some(state) = app.try_state::<AppState>() else { return };
+    if state.revealed.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let started = *state.splash_started.lock().unwrap();
+    let maximize = state.reveal_maximized.load(Ordering::SeqCst);
+    let app = app.clone();
+    std::thread::spawn(move || {
+        // Started hidden in the tray: no splash, nothing to show.
+        let Some(t0) = started else { return };
+        let elapsed = t0.elapsed().as_millis() as u64;
+        if elapsed < SPLASH_MIN_MS {
+            std::thread::sleep(std::time::Duration::from_millis(SPLASH_MIN_MS - elapsed));
+        }
+        if let Some(s) = app.get_webview_window("splash") {
+            let _ = s.emit("splash-done", ());
+        }
+        // Let the splash play its finish animation before the hand-off.
+        std::thread::sleep(std::time::Duration::from_millis(520));
+        if let Some(w) = app.get_webview_window("main") {
+            if maximize {
+                let _ = w.maximize();
+            }
+            let _ = w.show();
+            let _ = w.set_focus();
+        }
+        std::thread::sleep(std::time::Duration::from_millis(260));
+        if let Some(s) = app.get_webview_window("splash") {
+            let _ = s.close();
+        }
+    });
+}
+
+#[tauri::command]
+fn app_ready(app: tauri::AppHandle) {
+    reveal_main(&app);
 }
 
 // ---------- paths ----------
@@ -194,6 +244,13 @@ fn restore_geometry(w: &tauri::WebviewWindow) -> bool {
 }
 
 fn show_main(app: &tauri::AppHandle) {
+    // Asked for the window mid-splash (tray / second launch): skip the hand-off.
+    if let Some(state) = app.try_state::<AppState>() {
+        state.revealed.store(true, Ordering::SeqCst);
+    }
+    if let Some(s) = app.get_webview_window("splash") {
+        let _ = s.close();
+    }
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.unminimize();
         let _ = w.show();
@@ -974,6 +1031,9 @@ pub fn run() {
             port: port_slot.clone(),
             update_info: Mutex::new(None),
             installer_path: Mutex::new(None),
+            splash_started: Mutex::new(None),
+            reveal_maximized: AtomicBool::new(false),
+            revealed: AtomicBool::new(false),
         })
         .invoke_handler(tauri::generate_handler![
             get_server_port,
@@ -1005,10 +1065,47 @@ pub fn run() {
             check_for_updates,
             update_action,
             install_update_now,
+            app_ready,
         ])
         .setup(move |app| {
             let handle = app.handle().clone();
             let version = app.package_info().version.to_string();
+
+            // Launched by Windows at sign-in with "Start minimized" on: stay in the tray.
+            let autostarted = std::env::args().any(|a| a == "--autostart");
+            let start_hidden = autostarted && desktop_flag("startMinimized");
+
+            // Separate launch window, shown first while the main window loads hidden.
+            if !start_hidden {
+                let splash_js = format!(
+                    "window.__SPLASH__ = {};",
+                    serde_json::json!({ "version": version })
+                );
+                match WebviewWindowBuilder::new(
+                    app,
+                    "splash",
+                    WebviewUrl::App("src/renderer/splash.html".into()),
+                )
+                .title("Melodix")
+                .inner_size(560.0, 340.0)
+                .resizable(false)
+                .maximizable(false)
+                .minimizable(false)
+                .decorations(false)
+                .transparent(true)
+                .shadow(false)
+                .always_on_top(true)
+                .center()
+                .initialization_script(&splash_js)
+                .build()
+                {
+                    Ok(_) => {
+                        let state = app.state::<AppState>();
+                        *state.splash_started.lock().unwrap() = Some(std::time::Instant::now());
+                    }
+                    Err(e) => launch_log(&format!("[melodix] splash failed: {e}")),
+                }
+            }
 
             // Start the Node sidecar (search / streaming / lyrics backend).
             if let Some(child) = spawn_sidecar(&handle, &token, port_slot.clone()) {
@@ -1041,15 +1138,25 @@ pub fn run() {
                 set_autostart(true);
             }
 
-            // Launched by Windows at sign-in with "Start minimized" on: stay in the tray.
-            let autostarted = std::env::args().any(|a| a == "--autostart");
-            let start_hidden = autostarted && desktop_flag("startMinimized");
+            // The main window stays hidden until the renderer calls app_ready.
             let maximized = restore_geometry(&win);
             if !start_hidden {
-                if maximized {
-                    let _ = win.maximize();
+                let state = app.state::<AppState>();
+                state.reveal_maximized.store(maximized, Ordering::SeqCst);
+                if state.splash_started.lock().unwrap().is_none() {
+                    // Splash failed to open: show the main window straight away.
+                    state.revealed.store(true, Ordering::SeqCst);
+                    if maximized {
+                        let _ = win.maximize();
+                    }
+                    let _ = win.show();
+                } else {
+                    let app_for_reveal = app.handle().clone();
+                    std::thread::spawn(move || {
+                        std::thread::sleep(std::time::Duration::from_millis(SPLASH_MAX_MS));
+                        reveal_main(&app_for_reveal);
+                    });
                 }
-                let _ = win.show();
             }
 
             // Quiet background update check, a few seconds after launch so it

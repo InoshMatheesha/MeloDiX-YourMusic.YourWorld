@@ -160,56 +160,19 @@
   });
 })();
 
-(async function runMoodexSplash() {
-  const splash = document.getElementById('splash');
-  const host = document.getElementById('splash-logo');
-  if (!splash || !host) return;
-  const finish = () => {
-    if (!splash.isConnected || splash.classList.contains('hide')) return;
-    splash.classList.add('hide');
-    setTimeout(() => splash.remove(), 480);
+// Tell the Rust shell the page is painted so it can swap the splash window for this one.
+(function signalAppReady() {
+  let sent = false;
+  const send = () => {
+    if (sent) return;
+    sent = true;
+    try { window.__TAURI__ && window.__TAURI__.core.invoke("app_ready"); } catch (_) { }
   };
-  const safety = setTimeout(finish, 1850);
-  try {
-    const res = await fetch('../../assets/moodex.svg');
-    const svgText = await res.text();
-    host.innerHTML = svgText;
-    const svg = host.querySelector('svg');
-    const paths = svg ? Array.from(svg.querySelectorAll('path, circle, rect, polygon, polyline')) : [];
-    const lengths = paths.map((p) => {
-      const len = typeof p.getTotalLength === 'function' ? p.getTotalLength() : 600;
-      p.style.fill = 'var(--md-sys-color-primary, #5FD0FF)';
-      p.style.fillOpacity = '0';
-      p.style.stroke = 'var(--md-sys-color-primary, #5FD0FF)';
-      p.style.strokeWidth = '6px';
-      p.style.strokeLinecap = 'round';
-      p.style.strokeLinejoin = 'round';
-      p.style.strokeDasharray = String(len);
-      p.style.strokeDashoffset = String(len);
-      return len;
-    });
-    const t0 = performance.now();
-    const dur = 1150;
-    const easeOut = (t) => 1 - Math.pow(1 - t, 3);
-    const tick = (now) => {
-      const p = Math.min(1, (now - t0) / dur);
-      const drawK = easeOut(Math.min(1, p / 0.72));
-      const fillK = p < 0.5 ? 0 : easeOut((p - 0.5) / 0.5);
-      const scale = 1.28 - 0.28 * easeOut(p);
-      host.style.transform = 'scale(' + scale.toFixed(3) + ')';
-      paths.forEach((elP, i) => {
-        elP.style.strokeDashoffset = String((lengths[i] * (1 - drawK)).toFixed(1));
-        elP.style.fillOpacity = String(fillK.toFixed(3));
-        elP.style.strokeOpacity = String((1 - fillK * 0.65).toFixed(3));
-      });
-      if (p < 1) requestAnimationFrame(tick);
-      else { clearTimeout(safety); finish(); }
-    };
-    requestAnimationFrame(tick);
-  } catch (_) {
-    clearTimeout(safety);
-    finish();
-  }
+  const afterLoad = () => setTimeout(send, 250);
+  if (document.readyState === "complete") afterLoad();
+  else window.addEventListener("load", afterLoad, { once: true });
+  // Never wait on slow web fonts or images for long.
+  setTimeout(send, 6000);
 })();
 
 function stripYoutubeTopic(artist) {
@@ -3878,7 +3841,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
     }
 
-    if (el.btnPlaybarMore) el.btnPlaybarMore.style.display = track.platform === 'local' ? 'none' : '';
+    // Local files have nothing to download, but a running download keeps its progress button.
+    if (el.btnPlaybarMore && !el.btnPlaybarMore.classList.contains('dl-busy')) el.btnPlaybarMore.style.display = track.platform === 'local' ? 'none' : '';
     if (el.timeDuration && track && track.duration) el.timeDuration.textContent = formatDuration(track.duration);
 
     updateRightPanelBanner(thumb);
@@ -4540,6 +4504,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       state.queueHistory = [state.queueIndex];
     }
     updateQueueBadge();
+    if (state.currentView === 'queue') renderQueueView();
 
     track.playedAt = Date.now();
     // Tally for the Wrapped view. state.history is capped and de-duplicated,
@@ -10507,8 +10472,11 @@ document.addEventListener('DOMContentLoaded', async () => {
       row.classList.add('track-selected');
     }
     const canonicalId = getTrackCanonicalId(track);
+    // The queue view starts at the playing song, so its rows carry their real queue position.
+    const isQueue = context === 'queue';
+    const realIdx = isQueue ? idx + ((container && container._queueOffset) || 0) : idx;
     row.dataset.canonicalId = canonicalId;
-    row.dataset.trackIndex = String(idx);
+    row.dataset.trackIndex = String(realIdx);
     row.dataset.trackId = track.id || '';
     row.dataset.trackTitle = track.title || '';
     row.dataset.trackArtist = track.artist || '';
@@ -10521,7 +10489,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     const isMatch = currentCanonicalId && canonicalId === currentCanonicalId;
-    if (isMatch) {
+    if (isQueue) {
+      // By position, not id: album tracks get a new id once a stream is found for them.
+      if (state.currentTrack && realIdx === state.queueIndex) row.classList.add('playing', 'queue-now-playing');
+    } else if (isMatch) {
       if (state.currentTrackContext === context && state.currentTrackIndexInContext >= 0) {
         if (state.currentTrackIndexInContext === idx) {
           row.classList.add('playing');
@@ -10671,7 +10642,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
       } else if (context === 'queue') {
         currentList = state.queue;
-        clickIndex = idx;
+        clickIndex = realIdx;
       }
       playTrack(track, currentList, clickIndex >= 0 ? clickIndex : idx, context);
       row.blur();
@@ -10891,6 +10862,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     containers.forEach(container => {
+      if (container === el.queueTracksList) {
+        // The queue tracks the playing slot by position; when the song moves on,
+        // re-render so the new one becomes the first row.
+        if (container._queueOffset !== queueViewStart() && state.currentView === 'queue' && !container._isDraggingReorder) {
+          renderQueueView();
+          return;
+        }
+        container.querySelectorAll('.track-row').forEach(r => {
+          const on = r.dataset.trackIndex === String(state.queueIndex);
+          r.classList.toggle('playing', on);
+          r.classList.toggle('queue-now-playing', on);
+        });
+        return;
+      }
       const matches = Array.from(container.querySelectorAll('.track-row')).filter(r => r.dataset.canonicalId === currentCanonicalId);
       if (matches.length === 1) {
         matches[0].classList.add('playing');
@@ -11771,10 +11756,19 @@ document.addEventListener('DOMContentLoaded', async () => {
   window.renderQueue = renderQueue;
   window.removeTrackFromQueue = removeTrackFromQueue;
 
+  // First queue slot the queue view shows: the playing song, or the top when nothing valid plays.
+  function queueViewStart() {
+    const qi = state.queueIndex;
+    return (state.currentTrack && Number.isInteger(qi) && qi >= 0 && qi < state.queue.length) ? qi : 0;
+  }
+
   function renderQueueView() {
     updateQueueBadge();
     if (!el.queueTracksList) return;
-    renderTracks(el.queueTracksList, state.queue, 'queue');
+    // Now playing first, then up next; already-played songs stay in the queue for Previous.
+    const start = queueViewStart();
+    el.queueTracksList._queueOffset = start;
+    renderTracks(el.queueTracksList, state.queue.slice(start), 'queue');
 
     el.queueTracksList.querySelectorAll('.track-row').forEach((row, idx) => {
       const actions = row.querySelector('.track-row-actions');
@@ -11801,7 +11795,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         : ((typeof window !== 'undefined' && (window.enableTrackSort || (window.TrackSort && window.TrackSort.enableTrackSort))) || null);
       if (typeof sortFn === 'function') {
         sortFn(el.queueTracksList, (fromIdx, toIdx) => {
-          if (fromIdx === toIdx || fromIdx < 0 || toIdx < 0 || fromIdx >= state.queue.length || toIdx >= state.queue.length) return;
+          // Played songs are hidden above the top row, so a drop there means "play next".
+          if (fromIdx !== state.queueIndex && state.queueIndex >= 0 && toIdx <= state.queueIndex) toIdx = state.queueIndex + 1;
+          if (fromIdx === toIdx || fromIdx < 0 || toIdx < 0 || fromIdx >= state.queue.length || toIdx >= state.queue.length) {
+            renderQueueView();
+            return;
+          }
           const [moved] = state.queue.splice(fromIdx, 1);
           state.queue.splice(toIdx, 0, moved);
           if (state.queueIndex === fromIdx) {
@@ -19151,7 +19150,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   (function initUpdateUI() {
     const api = window.electronAPI;
     const $ = (id) => document.getElementById(id);
-    let currentAppVersion = '2.0.2';
+    let currentAppVersion = '2.0.4';
     if (api && api.getAppVersion) {
       api.getAppVersion().then((v) => {
         if (v) {
@@ -21935,7 +21934,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (typeof showToast === 'function') showToast('No playlists to export', 'error');
       return;
     }
-    let appVer = '2.0.2';
+    let appVer = '2.0.4';
     try {
       if (window.electronAPI && window.electronAPI.getAppVersion) {
         const v = await window.electronAPI.getAppVersion();
@@ -22744,42 +22743,33 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   let downloadAbort = null;
 
+  // Downloads run after the sheet closes, so only the player-bar button cancels them.
   function cancelCurrentDownload() {
-    if (downloadAbort) {
-      try { downloadAbort.abort(); } catch (_) { }
-      downloadAbort = null;
-      const curSpinner = el.downloadSpinner || document.getElementById('download-spinner');
-      if (curSpinner) curSpinner.innerHTML = '';
-      if (el.btnConfirmDownload) {
-        el.btnConfirmDownload.style.display = '';
-        el.btnConfirmDownload.disabled = false;
-      }
-      updateDownloadBtnLabel();
-      showToast('Download cancelled', 'info');
-      if (el.downloadModal) closeModal(el.downloadModal);
-      return true;
-    }
-    return false;
+    // Only abort here; the download's own finally clears downloadAbort once it unwinds.
+    if (!downloadAbort || downloadAbort.signal.aborted) return false;
+    try { downloadAbort.abort(); } catch (_) { }
+    return true;
   }
 
+  // The sheet's X and Cancel only close the sheet; a running download keeps going.
   if (el.btnCloseDownloadModal) {
     el.btnCloseDownloadModal.addEventListener('click', () => {
-      if (!cancelCurrentDownload()) {
-        if (el.downloadModal) closeModal(el.downloadModal);
-      }
+      if (el.downloadModal) closeModal(el.downloadModal);
     });
   }
 
   if (el.btnCancelDownload) {
     el.btnCancelDownload.addEventListener('click', () => {
-      if (!cancelCurrentDownload()) {
-        if (el.downloadModal) closeModal(el.downloadModal);
-      }
+      if (el.downloadModal) closeModal(el.downloadModal);
     });
   }
 
   if (el.btnPlaybarMore) {
     el.btnPlaybarMore.addEventListener('click', () => {
+      if (dlUi.isActive()) {
+        if (!cancelCurrentDownload()) showToast('This download finishes on its own in a moment', 'info');
+        return;
+      }
       if (state.currentTrack) {
         openDownloadModal(state.currentTrack);
       } else {
@@ -22866,7 +22856,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
     };
 
-    writeStr(0, 'MOODEX');
+    // WAV magic bytes - must stay 'RIFF' (a rebrand rename broke this once).
+    writeStr(0, 'RIFF');
     view.setUint32(4, 36 + dataSize, true);
     writeStr(8, 'WAVE');
     writeStr(12, 'fmt ');
@@ -22891,21 +22882,220 @@ document.addEventListener('DOMContentLoaded', async () => {
     return new Blob([arrayBuffer], { type: 'audio/wav' });
   }
 
+  // Ranged download: 1 MB slices, three at a time, ~60x faster than one throttled request.
+  const DL_CHUNK = 1024 * 1024;
+
+  // Read a body to the end, reporting progress when the size is known.
+  async function readBodyWithProgress(res, onProgress) {
+    const total = Number(res.headers.get('content-length')) || 0;
+    if (!res.body || !res.body.getReader) return res.arrayBuffer();
+    const reader = res.body.getReader();
+    const chunks = [];
+    let received = 0;
+    onProgress(0, total);
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      received += value.length;
+      onProgress(received, total);
+    }
+    if (total && received < total) throw new Error('The audio download was cut short - please try again');
+    const joined = new Uint8Array(received);
+    let pos = 0;
+    for (const c of chunks) { joined.set(c, pos); pos += c.length; }
+    return joined.buffer;
+  }
+
+  // `first` is the response to bytes=0-(DL_CHUNK-1); without range support it falls back to one read.
+  async function fetchAudioRanged(first, url, signal, onProgress) {
+    const m = /\/(\d+)\s*$/.exec(first.headers.get('content-range') || '');
+    const total = m ? Number(m[1]) : 0;
+    if (first.status !== 206 || !total) return readBodyWithProgress(first, onProgress);
+
+    const out = new Uint8Array(total);
+    const head = new Uint8Array(await first.arrayBuffer());
+    out.set(head.subarray(0, total), 0);
+    let received = head.length;
+    onProgress(received, total);
+
+    const ranges = [];
+    for (let s = head.length; s < total; s += DL_CHUNK) ranges.push([s, Math.min(total, s + DL_CHUNK) - 1]);
+    let next = 0;
+    const worker = async () => {
+      while (next < ranges.length) {
+        const [s, e] = ranges[next++];
+        for (let attempt = 0; ; attempt++) {
+          try {
+            const r = await fetch(url, { signal, cache: 'no-store', headers: { Range: `bytes=${s}-${e}` } });
+            if (r.status !== 206) throw new Error(`Failed to load audio (${r.status})`);
+            // Every slice must come from the same file; a different size means the stream changed.
+            const rm = /\/(\d+)\s*$/.exec(r.headers.get('content-range') || '');
+            if (rm && Number(rm[1]) !== total) throw Object.assign(new Error('The audio stream changed mid-download - please try again'), { fatal: true });
+            const buf = new Uint8Array(await r.arrayBuffer());
+            if (buf.length !== e - s + 1) throw new Error('Short audio chunk');
+            out.set(buf, s);
+            received += buf.length;
+            onProgress(received, total);
+            break;
+          } catch (err) {
+            if (err.name === 'AbortError' || err.fatal || attempt >= 2) throw err;
+          }
+        }
+      }
+    };
+    await Promise.all([worker(), worker(), worker()]);
+    return out.buffer;
+  }
+
+  // Player-bar download progress: a ring around the download button plus a status chip above it.
+  const dlUi = (() => {
+    const RING_C = 2 * Math.PI * 16;
+    let ring = null, chip = null, hideTimer = null, active = false, lastPct = 0, hovering = false, lingering = false;
+    const btn = () => el.btnPlaybarMore;
+
+    function ensure() {
+      const b = btn();
+      if (!b) return false;
+      if (!ring) {
+        b.classList.add('dl-host');
+        ring = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        ring.setAttribute('class', 'dl-ring');
+        ring.setAttribute('viewBox', '0 0 36 36');
+        ring.innerHTML = `<circle class="dl-ring-track" cx="18" cy="18" r="16"/><circle class="dl-ring-fill" cx="18" cy="18" r="16" stroke-dasharray="${RING_C}" stroke-dashoffset="${RING_C}"/>`;
+        b.appendChild(ring);
+        // The status card only appears while the pointer rests on the button.
+        b.addEventListener("mouseenter", () => { hovering = true; sync(); });
+        b.addEventListener("mouseleave", () => { hovering = false; sync(); });
+      }
+      if (!chip) {
+        chip = document.createElement('div');
+        chip.className = 'dl-chip';
+        chip.setAttribute('role', 'status');
+        chip.setAttribute('aria-live', 'polite');
+        chip.innerHTML = '<div class="dl-chip-row"><span class="dl-chip-label"></span><span class="dl-chip-pct"></span></div><div class="dl-chip-bar"><div class="dl-chip-bar-fill"></div></div><div class="dl-chip-sub"></div><div class="dl-chip-hint"></div>';
+        document.body.appendChild(chip);
+        window.addEventListener('resize', place);
+      }
+      return true;
+    }
+
+    // Show the card only on hover, and only while there is progress to report.
+    function sync() {
+      if (!chip) return;
+      const show = hovering && (active || lingering);
+      if (show) place();
+      chip.classList.toggle("is-shown", show);
+    }
+
+    // Fixed to the viewport so the player bar's own clipping never hides it.
+    function place() {
+      const b = btn();
+      if (!chip || !b) return;
+      const r = b.getBoundingClientRect();
+      const w = chip.offsetWidth || 236;
+      const cx = r.left + r.width / 2;
+      const left = Math.max(12, Math.min(window.innerWidth - w - 12, cx - w / 2));
+      chip.style.left = `${left}px`;
+      chip.style.bottom = `${Math.max(12, window.innerHeight - r.top + 14)}px`;
+      // Keep the pointer aimed at the button even when the card is clamped to the edge.
+      chip.style.setProperty('--dl-arrow', `${Math.max(18, Math.min(w - 18, cx - left))}px`);
+    }
+
+    function setPct(pct) {
+      const fill = ring && ring.querySelector('.dl-ring-fill');
+      const bar = chip && chip.querySelector('.dl-chip-bar-fill');
+      const pctEl = chip && chip.querySelector('.dl-chip-pct');
+      const indet = pct === null;
+      if (btn()) btn().classList.toggle('dl-indeterminate', indet);
+      if (chip) chip.classList.toggle('is-indeterminate', indet);
+      if (indet) { if (pctEl) pctEl.textContent = ''; return; }
+      lastPct = Math.max(lastPct, Math.min(100, pct));
+      if (fill) fill.setAttribute('stroke-dashoffset', String(RING_C * (1 - lastPct / 100)));
+      if (bar) bar.style.transform = `scaleX(${lastPct / 100})`;
+      if (pctEl) pctEl.textContent = `${Math.round(lastPct)}%`;
+    }
+
+    function text(label, sub) {
+      if (!chip) return;
+      chip.querySelector('.dl-chip-label').textContent = typeof t === 'function' ? t(label) : label;
+      if (sub !== undefined) chip.querySelector('.dl-chip-sub').textContent = sub || '';
+      place();
+    }
+
+    function finish(kind, label, sub) {
+      const b = btn();
+      if (!b) return;
+      text(label, sub);
+      if (kind === 'done') setPct(100);
+      b.classList.remove('dl-active', 'dl-indeterminate');
+      b.classList.add(kind === 'done' ? 'dl-done' : 'dl-failed');
+      chip.classList.remove('is-indeterminate');
+      chip.classList.add(kind === 'done' ? 'is-done' : 'is-failed');
+      b.title = 'Download track';
+      chip.querySelector('.dl-chip-hint').textContent = '';
+      active = false;
+      lingering = true;
+      sync();
+      clearTimeout(hideTimer);
+      hideTimer = setTimeout(() => {
+        lingering = false;
+        sync();
+        b.classList.remove('dl-done', 'dl-failed', 'dl-busy');
+        b.style.display = (state.currentTrack && state.currentTrack.platform === 'local') ? 'none' : '';
+      }, kind === 'done' ? 2600 : 3200);
+    }
+
+    return {
+      isActive: () => active,
+      start(label, sub) {
+        if (!ensure()) return;
+        const b = btn();
+        clearTimeout(hideTimer);
+        active = true;
+        lastPct = 0;
+        // The button hides for local tracks; keep it visible while it carries progress.
+        b.style.display = '';
+        b.classList.remove('dl-done', 'dl-failed');
+        b.classList.add('dl-busy', 'dl-active');
+        // The hover card replaces the native tooltip while busy.
+        b.title = '';
+        chip.querySelector('.dl-chip-hint').textContent = typeof t === 'function' ? t('Click to cancel') : 'Click to cancel';
+        chip.classList.remove('is-done', 'is-failed');
+        setPct(0);
+        text(label, sub);
+        lingering = false;
+        requestAnimationFrame(sync);
+      },
+      progress(pct, label) { if (!active) return; setPct(pct); if (label) text(label); },
+      done(label, sub) { finish('done', label, sub); },
+      fail(label, sub) { finish('fail', label, sub); }
+    };
+  })();
+
   if (el.btnConfirmDownload) {
     el.btnConfirmDownload.addEventListener('click', async () => {
+      if (dlUi.isActive()) {
+        showToast('A download is already running - wait for it to finish', 'info');
+        return;
+      }
       if (downloadBatch) {
         const tracks = downloadBatch.tracks;
-        el.btnConfirmDownload.disabled = true;
+        const fmt = selectedFormat;
         let done = 0;
         let failed = 0;
         let lastDir = null;
+        downloadBatch = null;
+        // Close the sheet straight away; progress lives in the player bar from here.
+        if (el.downloadModal) closeModal(el.downloadModal);
+        dlUi.start(`Downloading 1 of ${tracks.length}`, `.${fmt}`);
         for (let i = 0; i < tracks.length; i++) {
           const t = tracks[i];
-          if (el.downloadBtnText) el.downloadBtnText.textContent = `Downloading ${i + 1}/${tracks.length}`;
+          dlUi.progress((i / tracks.length) * 100, `Downloading ${i + 1} of ${tracks.length}`);
           try {
             const customDir = state.downloadDir || localStorage.getItem('moodex_download_dir') || '';
             const thumbUrl = getTrackThumbUrl(t) || t.thumbnail || t.cover || '';
-            const downloadUrl = `http://127.0.0.1:${state.serverPort}/api/download?url=${encodeURIComponent(t.url || '')}&id=${encodeURIComponent(t.id || '')}&title=${encodeURIComponent(t.title || '')}&artist=${encodeURIComponent(t.artist || '')}&format=${selectedFormat}&quality=${selectedQuality}&thumbnail=${encodeURIComponent(thumbUrl)}&customDir=${encodeURIComponent(customDir)}`;
+            const downloadUrl = `http://127.0.0.1:${state.serverPort}/api/download?url=${encodeURIComponent(t.url || '')}&id=${encodeURIComponent(t.id || '')}&title=${encodeURIComponent(t.title || '')}&artist=${encodeURIComponent(t.artist || '')}&format=${fmt}&quality=${selectedQuality}&thumbnail=${encodeURIComponent(thumbUrl)}&customDir=${encodeURIComponent(customDir)}`;
             const res = await fetch(downloadUrl);
             const text = await res.text();
             let data;
@@ -22921,11 +23111,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             failed++;
             console.error('Download failed:', t.title || t.url || '', err.message);
           }
+          dlUi.progress(((i + 1) / tracks.length) * 100);
         }
-        el.btnConfirmDownload.disabled = false;
-        downloadBatch = null;
-        if (el.downloadModal) closeModal(el.downloadModal);
-        showToast(failed > 0 ? `Downloaded ${done}/${tracks.length} (${failed} failed)` : `Downloaded ${tracks.length} tracks${lastDir ? ' to ' + lastDir : ''}`, failed > 0 ? 'error' : 'success');
+        if (failed === tracks.length) {
+          dlUi.fail('Download failed', `${failed} of ${tracks.length} tracks could not be saved`);
+        } else {
+          dlUi.done(failed ? `Saved ${done} of ${tracks.length}` : `Saved ${tracks.length} tracks`, lastDir || '');
+        }
+        if (failed) showToast(`Downloaded ${done}/${tracks.length} (${failed} failed)`, 'error');
         return;
       }
       if (!trackToDownload) return;
@@ -22945,23 +23138,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         return;
       }
 
-      if (el.btnConfirmDownload) {
-        el.btnConfirmDownload.disabled = true;
-        el.btnConfirmDownload.style.display = 'none';
-      }
-      const spinnerEl = el.downloadSpinner || document.getElementById('download-spinner');
-      if (spinnerEl) {
-        spinnerEl.innerHTML = `
-          <div class="m3-spinner-container" style="width: 32px; height: 32px; padding: 4px; background: transparent;">
-            <svg class="m3-circular-progress" viewBox="0 0 48 48" style="width: 24px; height: 24px;">
-              <circle class="m3-spinner-track" cx="24" cy="24" r="18" fill="none" stroke-width="4"></circle>
-              <circle class="m3-spinner-head" cx="24" cy="24" r="18" fill="none" stroke-width="4" stroke="var(--md-sys-color-primary)"></circle>
-            </svg>
-          </div>
-        `;
-      }
-
-      showToast(`Downloading: ${t.title || 'Track'} (.${selectedFormat})`, 'info');
+      // Capture every choice now, then close the sheet; progress moves to the player bar.
+      const fmt = selectedFormat;
+      const qual = selectedQuality;
+      const applyEffects = Boolean(document.getElementById('download-apply-effects')?.checked);
+      trackToDownload = null;
+      if (el.downloadModal) closeModal(el.downloadModal);
+      dlUi.start('Getting audio', `${t.title || 'Track'} - .${fmt}`);
       downloadAbort = new AbortController();
 
       try {
@@ -23001,12 +23184,16 @@ document.addEventListener('DOMContentLoaded', async () => {
           fetchUrl = `http://127.0.0.1:${state.serverPort}/api/audio-proxy?url=${encodeURIComponent(audioSourceUrl)}`;
         }
 
-        const resFile = await fetch(fetchUrl, { signal: downloadAbort.signal });
+        const resFile = await fetch(fetchUrl, { signal: downloadAbort.signal, cache: 'no-store', headers: { Range: `bytes=0-${DL_CHUNK - 1}` } });
         if (!resFile.ok) throw new Error(`Failed to load audio (${resFile.status})`);
-        const arrayBuffer = await resFile.arrayBuffer();
+        // Fetch in ranged chunks (0-70% of the bar): YouTube throttles one whole-file request to real time.
+        const arrayBuffer = await fetchAudioRanged(resFile, fetchUrl, downloadAbort.signal, (got, total) => {
+          dlUi.progress(total ? (got / total) * 70 : null, 'Getting audio');
+        });
 
         if (downloadAbort?.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
 
+        dlUi.progress(74, 'Processing');
         const decodeCtx = audioEngine.ctx || new (window.AudioContext || window.webkitAudioContext)();
         const decodedBuffer = await new Promise((resolve, reject) => {
           decodeCtx.decodeAudioData(arrayBuffer.slice(0), resolve, reject);
@@ -23014,14 +23201,20 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         if (downloadAbort?.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
 
+        // Never save a cut-off file: the whole song was fetched, so it must be about as long as the track.
+        const expectedSec = Number(t.duration) || 0;
+        if (expectedSec > 30 && decodedBuffer.duration < expectedSec * 0.85) {
+          throw new Error(`Only ${Math.round(decodedBuffer.duration)}s of ${Math.round(expectedSec)}s arrived - please try again`);
+        }
+
         let bufferToProcess = decodedBuffer;
         if (startSec > 0 || (endSec !== null && endSec < decodedBuffer.duration)) {
           bufferToProcess = trimAudioBuffer(decodeCtx, decodedBuffer, startSec, endSec);
         }
 
-        const applyEffects = Boolean(document.getElementById('download-apply-effects')?.checked);
         let finalBuffer = bufferToProcess;
         if (applyEffects) {
+          dlUi.progress(80, 'Applying effects');
           const currentSettings = {
             ...state.audioSettings,
             volume: 1.0,
@@ -23037,9 +23230,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         if (downloadAbort?.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
 
+        dlUi.progress(88, `Saving .${fmt}`);
         const customDir = state.downloadDir || localStorage.getItem('moodex_download_dir') || '';
         const thumbUrl = getTrackThumbUrl(t) || t.thumbnail || t.cover || '';
-        const encodeUrl = `http://127.0.0.1:${state.serverPort}/api/encode?title=${encodeURIComponent(t.title || 'untitled')}&artist=${encodeURIComponent(t.artist || 'unknown artist')}&format=${selectedFormat}&quality=${selectedQuality}&thumbnail=${encodeURIComponent(thumbUrl)}&customDir=${encodeURIComponent(customDir)}`;
+        const encodeUrl = `http://127.0.0.1:${state.serverPort}/api/encode?title=${encodeURIComponent(t.title || 'untitled')}&artist=${encodeURIComponent(t.artist || 'unknown artist')}&format=${fmt}&quality=${qual}&thumbnail=${encodeURIComponent(thumbUrl)}&customDir=${encodeURIComponent(customDir)}`;
         const resEncode = await fetch(encodeUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'audio/wav' },
@@ -23055,20 +23249,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         if (!dataEncode.success) throw new Error(dataEncode.error || 'Failed to encode');
 
-        showToast(`Download complete: saved to ${dataEncode.directory ? dataEncode.directory + '/' : ''}${dataEncode.filename}`, 'info');
-        if (el.downloadModal) closeModal(el.downloadModal);
+        dlUi.done('Saved', dataEncode.filename || '');
       } catch (err) {
-        if (err.name === 'AbortError') return;
+        if (err.name === 'AbortError') {
+          dlUi.fail('Download cancelled', t.title || '');
+          return;
+        }
         console.error('Download error:', err);
+        dlUi.fail('Download failed', err.message || '');
         showToast(`Download failed: ${err.message}`, 'error');
       } finally {
         downloadAbort = null;
-        const curSpinner = el.downloadSpinner || document.getElementById('download-spinner');
-        if (curSpinner) curSpinner.innerHTML = '';
-        if (el.btnConfirmDownload) {
-          el.btnConfirmDownload.style.display = '';
-          el.btnConfirmDownload.disabled = false;
-        }
         updateDownloadBtnLabel();
       }
     });

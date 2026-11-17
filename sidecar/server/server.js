@@ -4087,6 +4087,20 @@ async function handleDownloadedTrack(req, res, name) {
 
 // Ask yt-dlp (pinned to IPv4, like the proxy itself) for a fresh stream URL.
 // Used when a cached googlevideo link has gone stale underneath us.
+// Stale googlevideo URL -> its re-resolved replacement. The page keeps asking with the
+// old URL (ranged downloads, seeks), so without this every request paid ~4s for yt-dlp.
+const HEAL_TTL_MS = 20 * 60 * 1000;
+const healedStreams = new Map();
+function healStreamUrl(videoId, staleUrl) {
+  const hit = healedStreams.get(staleUrl);
+  if (hit && Date.now() - hit.at < HEAL_TTL_MS) return hit.promise;
+  const promise = reresolveGoogleVideoUrl(videoId, staleUrl).catch(() => null);
+  healedStreams.set(staleUrl, { at: Date.now(), promise });
+  promise.then((u) => { if (!u) healedStreams.delete(staleUrl); });
+  if (healedStreams.size > 200) healedStreams.delete(healedStreams.keys().next().value);
+  return promise;
+}
+
 async function reresolveGoogleVideoUrl(videoId, staleUrl) {
   let id = videoId || '';
   if (!id) {
@@ -4107,9 +4121,15 @@ async function reresolveGoogleVideoUrl(videoId, staleUrl) {
     if (u === staleUrl || key === id || key.startsWith(id + '_')) streamUrlCache.delete(key);
   }
 
+  // Ask for the same itag as the dead link: same format means byte-identical data,
+  // so a ranged read or a seek can carry on mid-file without mixing two encodings.
+  let itag = '';
+  try { itag = new URL(staleUrl).searchParams.get('itag') || ''; } catch (e) {}
+  const formatArg = /^\d+$/.test(itag) ? `${itag}/bestaudio[ext=m4a]/bestaudio/best` : 'bestaudio[ext=m4a]/bestaudio/best';
+
   try {
     const out = await executeYtDlp(
-      ['-f', 'bestaudio[ext=m4a]/bestaudio/best', '--get-url', '--no-warnings', `https://www.youtube.com/watch?v=${id}`],
+      ['-f', formatArg, '--get-url', '--no-warnings', `https://www.youtube.com/watch?v=${id}`],
       20000
     );
     const fresh = String(out || '').trim().split('\n').map(s => s.trim()).filter(s => s.startsWith('http'))[0];
@@ -4129,6 +4149,14 @@ async function handleAudioProxy(req, res, targetUrl, retried = false) {
   if (!targetUrl) {
     res.writeHead(400);
     return res.end('Missing url');
+  }
+  // Already healed this link: go straight to the replacement (follow a short chain).
+  for (let hop = 0; hop < 3 && !retried; hop++) {
+    const healed = healedStreams.get(targetUrl);
+    if (!healed || Date.now() - healed.at >= HEAL_TTL_MS) break;
+    const fresh = await healed.promise;
+    if (!fresh || fresh === targetUrl) break;
+    targetUrl = fresh;
   }
 
   try {
@@ -4232,7 +4260,7 @@ async function handleAudioProxy(req, res, targetUrl, retried = false) {
         let reqUrl = null;
         try { reqUrl = new URL(req.url, 'http://127.0.0.1'); } catch (e) {}
         const videoId = (reqUrl && reqUrl.searchParams.get('vid')) || parsed.searchParams.get('docid') || '';
-        const fresh = await reresolveGoogleVideoUrl(videoId, targetUrl);
+        const fresh = await healStreamUrl(videoId, targetUrl);
         if (fresh && fresh !== targetUrl) {
           logger.log('INFO', `audio-proxy: ${proxyRes.statusCode} on stale URL, re-resolved ${videoId || '(unknown id)'}`);
           return handleAudioProxy(req, res, fresh, true);
@@ -4251,6 +4279,8 @@ async function handleAudioProxy(req, res, targetUrl, retried = false) {
       if (/^audio\/x-m4[ap]/i.test(String(proxyRes.headers['content-type'] || ''))) {
         proxyRes.headers['content-type'] = 'audio/mp4';
       }
+      // Let the page read the total size, so downloads can fetch in fast ranged chunks.
+      proxyRes.headers['access-control-expose-headers'] = 'Content-Range, Content-Length, Accept-Ranges';
       res.writeHead(proxyRes.statusCode, proxyRes.headers);
       proxyRes.on('error', () => { try { res.destroy(); } catch (e) {} });
       proxyRes.pipe(res);

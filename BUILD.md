@@ -52,7 +52,7 @@ npx tauri build        # release build + NSIS installer
 
 Outputs:
 - `src-tauri/target/release/melodix.exe` — the app binary
-- `src-tauri/target/release/bundle/nsis/Melodix_2.0.2_x64-setup.exe` — installer
+- `src-tauri/target/release/bundle/nsis/Melodix_2.0.4_x64-setup.exe` — installer
 
 ## Run in dev
 

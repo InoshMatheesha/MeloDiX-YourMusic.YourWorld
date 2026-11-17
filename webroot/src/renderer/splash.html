@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Melodix</title>
+<style>
+  :root {
+    --cyan: #5FD0FF;
+    --blue: #2E9BFF;
+    --royal: #1A5CF0;
+    --ink: #EAF4FF;
+    --muted: rgba(220, 234, 255, 0.7);
+    --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100%; height: 100%; background: transparent; overflow: hidden; user-select: none; cursor: default; }
+  body { font-family: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif; color: var(--ink); }
+
+  /* Card fills the borderless transparent window */
+  .card {
+    position: absolute; inset: 0; border-radius: 20px; overflow: hidden;
+    background: radial-gradient(120% 90% at 50% 0%, #0d1d40 0%, #070e20 55%, #04070f 100%);
+    box-shadow: inset 0 0 0 1px rgba(120, 180, 255, 0.14);
+    opacity: 0; transform: scale(0.96);
+    animation: cardIn 0.6s var(--ease) 0.05s forwards;
+  }
+  .card.out { animation: cardOut 0.5s cubic-bezier(0.4, 0, 1, 1) forwards; }
+
+  /* Drifting aurora light */
+  .aurora { position: absolute; border-radius: 50%; filter: blur(60px); opacity: 0.55; mix-blend-mode: screen; }
+  .a1 { width: 340px; height: 340px; left: -90px; top: -150px; background: var(--royal); animation: drift1 9s ease-in-out infinite alternate; }
+  .a2 { width: 300px; height: 300px; right: -100px; bottom: -170px; background: var(--cyan); opacity: 0.32; animation: drift2 11s ease-in-out infinite alternate; }
+  .a3 { width: 220px; height: 220px; left: 50%; top: 40%; margin-left: -110px; background: var(--blue); opacity: 0.18; animation: breathe 4s ease-in-out infinite; }
+
+  /* Fine dot grid fading toward the edges */
+  .grid {
+    position: absolute; inset: 0; opacity: 0.35;
+    background-image: radial-gradient(rgba(150, 200, 255, 0.22) 1px, transparent 1.2px);
+    background-size: 18px 18px;
+    -webkit-mask-image: radial-gradient(60% 60% at 50% 45%, #000 0%, transparent 100%);
+            mask-image: radial-gradient(60% 60% at 50% 45%, #000 0%, transparent 100%);
+  }
+
+  .content { position: relative; height: 100%; display: flex; flex-direction: column; align-items: center; padding-top: 40px; }
+
+  /* Logo: M draws in, side bars pulse like an equalizer */
+  .mark { width: 124px; height: 124px; margin-bottom: -10px; filter: drop-shadow(0 0 18px rgba(46, 155, 255, 0.55)) drop-shadow(0 0 42px rgba(26, 92, 240, 0.35)); }
+  .mark .m {
+    fill: url(#mx-grad); fill-opacity: 0; stroke: url(#mx-grad); stroke-width: 7; stroke-linejoin: round;
+    stroke-dasharray: 1400; stroke-dashoffset: 1400;
+    animation: draw 1.1s var(--ease) 0.25s forwards, fill 0.6s ease 0.95s forwards;
+  }
+  .mark .bar { fill: url(#mx-grad); transform-box: fill-box; transform-origin: center; transform: scaleY(0); animation: barIn 0.5s var(--ease) forwards, eq 1.2s ease-in-out infinite; }
+  .mark .b1 { animation-delay: 0.85s, 1.35s; }
+  .mark .b2 { animation-delay: 0.75s, 1.55s; }
+  .mark .b3 { animation-delay: 0.75s, 1.45s; }
+  .mark .b4 { animation-delay: 0.85s, 1.65s; }
+
+  .word {
+    margin-top: 14px; font-size: 34px; font-weight: 650; letter-spacing: 0.5px;
+    background: linear-gradient(100deg, #ffffff 0%, #cfe8ff 35%, var(--cyan) 50%, #cfe8ff 65%, #ffffff 100%);
+    background-size: 250% 100%; -webkit-background-clip: text; background-clip: text; color: transparent;
+    opacity: 0; transform: translateY(8px);
+    animation: rise 0.6s var(--ease) 0.7s forwards, shimmer 3.2s ease-in-out 1.4s infinite;
+  }
+  .tag {
+    margin-top: 4px; font-size: 13px; letter-spacing: 3px; text-transform: uppercase; color: var(--muted);
+    opacity: 0; transform: translateY(6px); animation: rise 0.6s var(--ease) 0.9s forwards;
+  }
+
+  /* Bottom status + progress */
+  .foot { position: absolute; left: 32px; right: 32px; bottom: 26px; opacity: 0; animation: rise 0.6s var(--ease) 1.05s forwards; }
+  .row { display: flex; justify-content: space-between; align-items: baseline; font-size: 12px; color: var(--muted); }
+  .status { transition: opacity 0.25s ease; }
+  .status.swap { opacity: 0; }
+  .ver { font-variant-numeric: tabular-nums; opacity: 0.75; }
+  .track { margin-top: 10px; height: 3px; border-radius: 3px; background: rgba(120, 180, 255, 0.14); overflow: visible; position: relative; }
+  .fill {
+    position: absolute; left: 0; top: 0; bottom: 0; width: 100%; border-radius: 3px;
+    background: linear-gradient(90deg, var(--royal), var(--blue) 60%, var(--cyan));
+    transform-origin: left center; transform: scaleX(0);
+  }
+  .glow {
+    position: absolute; top: 50%; width: 46px; height: 12px; margin: -6px 0 0 -40px; border-radius: 50%;
+    background: radial-gradient(closest-side, rgba(95, 208, 255, 0.9), transparent); filter: blur(2px); left: 0;
+  }
+
+  @keyframes cardIn { to { opacity: 1; transform: scale(1); } }
+  @keyframes cardOut { to { opacity: 0; transform: scale(1.03); filter: blur(2px); } }
+  @keyframes drift1 { to { transform: translate(70px, 40px) scale(1.12); } }
+  @keyframes drift2 { to { transform: translate(-80px, -30px) scale(1.15); } }
+  @keyframes breathe { 50% { transform: scale(1.25); opacity: 0.28; } }
+  @keyframes draw { to { stroke-dashoffset: 0; } }
+  @keyframes fill { to { fill-opacity: 1; stroke-width: 0; } }
+  @keyframes barIn { to { transform: scaleY(1); } }
+  @keyframes eq { 0%, 100% { transform: scaleY(1); } 50% { transform: scaleY(0.45); } }
+  @keyframes rise { to { opacity: 1; transform: none; } }
+  @keyframes shimmer { 0% { background-position: 100% 0; } 60%, 100% { background-position: -50% 0; } }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.01s !important; animation-iteration-count: 1 !important; animation-delay: 0s !important; }
+  }
+</style>
+</head>
+<body>
+  <div class="card" id="card">
+    <div class="aurora a1"></div>
+    <div class="aurora a2"></div>
+    <div class="aurora a3"></div>
+    <div class="grid"></div>
+
+    <div class="content">
+      <svg class="mark" viewBox="0 0 512 512" aria-hidden="true">
+        <defs>
+          <linearGradient id="mx-grad" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#5FD0FF"/>
+            <stop offset="0.55" stop-color="#2E9BFF"/>
+            <stop offset="1" stop-color="#1A5CF0"/>
+          </linearGradient>
+        </defs>
+        <rect class="bar b1" x="66" y="206" width="22" height="100" rx="11"/>
+        <rect class="bar b2" x="100" y="171" width="22" height="170" rx="11"/>
+        <rect class="bar b3" x="390" y="171" width="22" height="170" rx="11"/>
+        <rect class="bar b4" x="424" y="206" width="22" height="100" rx="11"/>
+        <path class="m" d="M127 350 L127 168 L173 168 L256 228 L339 168 L385 168 L385 350 L339 350 L339 250 L256 310 L173 250 L173 350 Z"/>
+      </svg>
+      <div class="word">Melodix</div>
+      <div class="tag">Your Music. Your World.</div>
+    </div>
+
+    <div class="foot">
+      <div class="row">
+        <span class="status" id="status">Starting up</span>
+        <span class="ver" id="ver"></span>
+      </div>
+      <div class="track">
+        <div class="fill" id="fill"></div>
+        <div class="glow" id="glow"></div>
+      </div>
+    </div>
+  </div>
+
+<script>
+  (function () {
+    var boot = window.__SPLASH__ || {};
+    document.getElementById('ver').textContent = boot.version ? 'v' + boot.version : '';
+
+    var fill = document.getElementById('fill');
+    var glow = document.getElementById('glow');
+    var statusEl = document.getElementById('status');
+    var card = document.getElementById('card');
+    var shown = 0, target = 34, cap = 58, done = false, last = performance.now();
+
+    // Cross-fade the status line to new text
+    function setStatus(text) {
+      if (statusEl.textContent === text) return;
+      statusEl.classList.add('swap');
+      setTimeout(function () { statusEl.textContent = text; statusEl.classList.remove('swap'); }, 220);
+    }
+
+    // Ease the bar toward its target, creeping slowly while waiting
+    function frame(now) {
+      var dt = Math.min(64, now - last); last = now;
+      if (!done && target < cap) target = Math.min(cap, target + dt * 0.006);
+      shown += (target - shown) * Math.min(1, dt * (done ? 0.012 : 0.005));
+      var k = Math.max(0, Math.min(1, shown / 100));
+      fill.style.transform = 'scaleX(' + k.toFixed(4) + ')';
+      glow.style.left = (k * 100).toFixed(2) + '%';
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+
+    setTimeout(function () { if (!done) setStatus('Warming up the audio engine'); }, 600);
+
+    var ev = window.__TAURI__ && window.__TAURI__.event;
+    if (ev) {
+      ev.listen('server-ready', function () {
+        if (done) return;
+        target = Math.max(target, 70); cap = 92;
+        setStatus('Loading your library');
+      });
+      ev.listen('splash-done', function () {
+        done = true; target = 100;
+        setStatus('Ready');
+        setTimeout(function () { card.classList.add('out'); }, 260);
+      });
+    }
+  })();
+</script>
+</body>
+</html>

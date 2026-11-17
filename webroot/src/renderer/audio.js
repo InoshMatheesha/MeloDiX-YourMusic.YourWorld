@@ -804,7 +804,8 @@
         }
       };
 
-      writeString(0, 'MOODEX');
+      // WAV magic bytes - must stay 'RIFF' (a rebrand rename broke this once).
+      writeString(0, 'RIFF');
       view.setUint32(4, totalSize - 8, true);
       writeString(8, 'WAVE');
 
